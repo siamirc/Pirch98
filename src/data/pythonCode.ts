@@ -23,6 +23,7 @@ class IRCWorker(QObject):
     system_message = pyqtSignal(str)            # ข้อความระบบ/Log
     user_joined = pyqtSignal(str, str)           # (channel, nick)
     user_left = pyqtSignal(str, str)             # (channel, nick)
+    user_kicked = pyqtSignal(str, str, str, str) # (channel, kicked_nick, kicker_nick, reason)
     user_list_received = pyqtSignal(str, list)   # (channel, list of nicks)
     error_occurred = pyqtSignal(str)
 
@@ -118,6 +119,12 @@ class IRCWorker(QObject):
                 self.user_left.emit(channel, sender_nick)
             elif command == "QUIT":
                 self.user_left.emit("ALL", sender_nick)
+            elif command == "KICK":
+                channel = target
+                parts = params.split(" ", 1)
+                kicked_nick = parts[0]
+                reason = parts[1].lstrip(":") if len(parts) > 1 else "Kicked"
+                self.user_kicked.emit(channel, kicked_nick, sender_nick, reason)
             elif command == "353": # รหัสแสดงรายชื่อผู้ใช้ในห้อง (RPL_NAMREPLY)
                 # รูปแบบ: :server 353 nick = #channel :nick1 nick2 nick3...
                 try:
@@ -163,10 +170,12 @@ class PIRCHMainWindow(QMainWindow):
         self.current_channel = ""
         self.rooms = {}
         self.current_theme = "light"
+        self.font_size_idx = 1 # 0: เล็ก, 1: กลาง, 2: ใหญ่
         
         # เริ่มสร้างส่วนติดต่อผู้ใช้ (UI)
         self.init_ui()
         self.apply_theme("light")
+        self.update_font_size()
 
     def init_ui(self):
         # Widget หลัก
@@ -221,6 +230,12 @@ class PIRCHMainWindow(QMainWindow):
         self.theme_btn.setFixedWidth(100)
         self.theme_btn.clicked.connect(self.toggle_theme)
         top_layout.addWidget(self.theme_btn)
+
+        # ปุ่มปรับขนาดตัวอักษร 3 ระดับ
+        self.font_btn = QPushButton("🔍 ขนาด: กลาง")
+        self.font_btn.setFixedWidth(100)
+        self.font_btn.clicked.connect(self.change_font_size)
+        top_layout.addWidget(self.font_btn)
 
         main_layout.addWidget(top_frame)
 
@@ -390,6 +405,7 @@ class PIRCHMainWindow(QMainWindow):
         self.irc_worker.message_received.connect(self.on_message_received)
         self.irc_worker.user_joined.connect(self.on_user_joined)
         self.irc_worker.user_left.connect(self.on_user_left)
+        self.irc_worker.user_kicked.connect(self.on_user_kicked)
         self.irc_worker.user_list_received.connect(self.on_user_list)
         self.irc_worker.registered.connect(self.on_irc_registered)
         self.irc_worker.error_occurred.connect(self.on_error)
@@ -479,8 +495,9 @@ class PIRCHMainWindow(QMainWindow):
         """ เมื่อได้รับข้อความแชท """
         is_me = nick == self.nick_input.text().strip()
         nick_color = "#4f46e5" if is_me else "#059669"
-        text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
-        msg_html = f"<div style='margin: 3px 0;'><b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
+        
+        text_color = "#0f172a" if self.current_theme == "light" else "#f1f5f9"
+        msg_html = f"<div style='margin: 3px 0;'><b>&lt;<span style='color: {nick_color};'>{nick}</span>&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
         
         target_key = target.lower()
         if target_key in self.rooms:
@@ -494,6 +511,47 @@ class PIRCHMainWindow(QMainWindow):
                 # กรณีเป็นข้อความกระซิบเดี่ยว (Private Message) ให้แสดงไว้ที่ห้อง Status พร้อมข้อความระบุชัดเจน
                 self.status_display.append(f"<div style='margin: 3px 0;'><b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{message}</span></div>")
 
+    def clean_nick(self, nick):
+        """ ล้างค่าสัญลักษณ์หน้าชื่อผู้ใช้งาน เช่น @, +, %, & และ ~ """
+        return nick.lstrip("@+%&~")
+
+    def add_user_to_list(self, channel, nick):
+        """ เพิ่มผู้ใช้งานเข้าสู่ห้องแชทจำลอง/จริงแบบเรียลไทม์ และป้องกันชื่อซ้ำ """
+        chan_key = channel.lower()
+        if chan_key in self.rooms:
+            room = self.rooms[chan_key]
+            clean_new_nick = self.clean_nick(nick)
+            # ลบชื่อเก่าที่อาจจะชนกันออกก่อน
+            room["users"] = [u for u in room["users"] if self.clean_nick(u) != clean_new_nick]
+            room["users"].append(nick)
+            self.update_user_list_ui(channel, room["users"])
+
+    def remove_user_from_list(self, channel, nick):
+        """ ลบผู้ใช้งานออกจากห้องแชทจำลอง/จริงแบบเรียลไทม์ """
+        chan_key = channel.lower()
+        if chan_key in self.rooms:
+            room = self.rooms[chan_key]
+            clean_target_nick = self.clean_nick(nick)
+            room["users"] = [u for u in room["users"] if self.clean_nick(u) != clean_target_nick]
+            self.update_user_list_ui(channel, room["users"])
+
+    def remove_user_from_all_lists(self, nick):
+        """ ลบผู้ใช้งานออกจากทุกห้องแชท (เมื่อ QUIT หรือหลุดออกจากเซิร์ฟเวอร์) """
+        clean_target_nick = self.clean_nick(nick)
+        for chan_key in list(self.rooms.keys()):
+            room = self.rooms[chan_key]
+            orig_len = len(room["users"])
+            room["users"] = [u for u in room["users"] if self.clean_nick(u) != clean_target_nick]
+            if len(room["users"]) != orig_len:
+                # หาชื่อแท้จริงของช่องแชทจากแถบแท็บเพื่ออัปเดต UI ให้ถูกต้อง
+                channel_name = chan_key
+                for i in range(self.tab_widget.count()):
+                    tab_text = self.tab_widget.tabText(i).split(" (")[0]
+                    if tab_text.lower() == chan_key:
+                        channel_name = tab_text
+                        break
+                self.update_user_list_ui(channel_name, room["users"])
+
     def on_user_joined(self, channel, nick):
         """ มีคนอื่น หรือตัวเราเอง Join เข้ามาในห้องแชท """
         room = self.get_or_create_channel_tab(channel)
@@ -504,9 +562,8 @@ class PIRCHMainWindow(QMainWindow):
         if nick == self.nick_input.text().strip():
             self.current_channel = channel
             
-        # ดึงรายชื่อคนในห้องใหม่
-        if self.irc_worker:
-            self.irc_worker.send_line(f"NAMES {channel}")
+        # เพิ่มเข้าสู่ผู้ใช้งานของระบบแชทแบบเรียลไทม์ทันที
+        self.add_user_to_list(channel, nick)
 
     def on_user_left(self, channel, nick):
         """ มีคนออกจากห้องแชท หรือออกจากระบบ """
@@ -523,32 +580,59 @@ class PIRCHMainWindow(QMainWindow):
                     if self.current_channel == channel:
                         self.current_channel = ""
                 else:
-                    # ขอรายชื่อคนในช่องใหม่เพื่อลบรายชื่ออก
-                    if self.irc_worker:
-                        self.irc_worker.send_line(f"NAMES {channel}")
+                    self.remove_user_from_list(channel, nick)
         else:
-            # กรณีหลุดออกจากระบบทั้งหมด ให้รีเฟรชรายชื่อของทุกห้องที่เหลืออยู่
-            for chan_name in list(self.rooms.keys()):
-                if self.irc_worker:
-                    self.irc_worker.send_line(f"NAMES {chan_name}")
+            # กรณีหลุดออกจากระบบทั้งหมด ให้ลบผู้ใช้รายนี้ออกจากทุกห้องแชททันที
+            self.remove_user_from_all_lists(nick)
+
+    def on_user_kicked(self, channel, kicked_nick, kicker_nick, reason):
+        """ เมื่อมีคนถูกเตะออกจากห้องแชท (KICK event) """
+        chan_key = channel.lower()
+        if chan_key in self.rooms:
+            room = self.rooms[chan_key]
+            text_color = "#ef4444" if self.current_theme == "light" else "#f87171"
+            room["chat_display"].append(f"<span style='color: {text_color}; font-weight: bold;'>❌ {kicked_nick} ถูกเตะออกจากห้อง {channel} โดย {kicker_nick} ({reason})</span>")
+            
+            # หากเป็นตัวเราเองโดนเตะ ให้ปิดแท็บห้องแชทนั้น
+            if kicked_nick == self.nick_input.text().strip():
+                self.remove_channel_tab(channel)
+                if self.current_channel == channel:
+                    self.current_channel = ""
+            else:
+                self.remove_user_from_list(channel, kicked_nick)
 
     def on_user_list(self, channel, users):
-        """ ได้รับรายชื่อผู้ใช้ทั้งหมดในห้องแชท """
-        self.update_user_list_ui(channel, users)
+        """ ได้รับรายชื่อผู้ใช้ทั้งหมดในห้องแชทจากคำสั่ง NAMES """
+        chan_key = channel.lower()
+        if chan_key in self.rooms:
+            # ใช้รายชื่อที่ได้รับทับค่าเดิม
+            self.rooms[chan_key]["users"] = users
+            self.update_user_list_ui(channel, users)
 
     def update_user_list_ui(self, channel, users_list):
-        """ เรียงลำดับตำแหน่งผู้ใช้จาก สูง -> ต่ำ (@ Admin -> + Voice -> ทั่วไป) และระบุจำนวนสมาชิก """
-        # จัดเรียงลำดับ: Operator (@) ก่อน -> Voice (+) -> ทั่วไป และเรียงพยัญชนะ
+        """ จัดเรียงลำดับสิทธิ์ผู้ใช้ และอัปเดตตัวเลขจำนวนคนแบบเรียลไทม์ถูกต้องตามความต้องการของผู้ใช้ """
+        # จัดเรียงตามระดับยศ: ~ Owner, & Admin, @ Op, % HalfOp, + Voice จากนั้นผู้ใช้ธรรมดา
         def sort_key(user):
             if not user:
-                return (3, "")
-            if user.startswith("@"):
-                return (0, user[1:].lower())
+                return (5, "")
+            
+            # สกัดหาชื่อแบบคลีนเปรียบเทียบเรียงลำดับพยัญชนะ
+            clean_name = self.clean_nick(user).lower()
+            
+            if user.startswith("~"):
+                return (0, clean_name)
+            elif user.startswith("&"):
+                return (1, clean_name)
+            elif user.startswith("@"):
+                return (2, clean_name)
+            elif user.startswith("%"):
+                return (3, clean_name)
             elif user.startswith("+"):
-                return (1, user[1:].lower())
+                return (4, clean_name)
             else:
-                return (2, user.lower())
+                return (5, clean_name)
         
+        # จัดเรียงรายชื่อด้วย sort_key
         sorted_users = sorted(users_list, key=sort_key)
         
         chan_key = channel.lower()
@@ -561,10 +645,34 @@ class PIRCHMainWindow(QMainWindow):
                 if u:
                     room["user_list"].addItem(u)
             
-            # บอกจำนวนสมาชิกในห้องแชทและอัปเดตลงบนชื่อแถบแท็บ
+            # อัปเดตรายชื่อจำนวนคนในห้องแชทลงในปุ่มแท็บ
             idx = self.tab_widget.indexOf(room["widget"])
             if idx != -1:
                 self.tab_widget.setTabText(idx, f"{channel} ({len(sorted_users)})")
+
+    def update_font_size(self):
+        """ ปรับขนาดตัวอักษร 3 ระดับ: เล็ก (10px) -> กลาง (13px) -> ใหญ่ (16px) """
+        sizes = [10, 13, 16]
+        labels = ["เล็ก", "กลาง", "ใหญ่"]
+        current_size = sizes[self.font_size_idx]
+        
+        # อัปเดตข้อความบนปุ่มกด
+        self.font_btn.setText(f"🔍 ขนาด: {labels[self.font_size_idx]}")
+        
+        # ตั้งค่าฟอนต์ใหม่ทั้งหมดในหน้าต่างแสดงผล
+        font = QFont("Segoe UI", current_size)
+        self.status_display.setFont(font)
+        self.motd_display.setFont(font)
+        
+        # นำฟอนต์ไปใช้กับห้องทั้งหมด
+        for r in self.rooms.values():
+            r["chat_display"].setFont(font)
+            r["user_list"].setFont(font)
+
+    def change_font_size(self):
+        """ สลับระดับขนาดตัวอักษร 3 ระดับวนซ้ำ """
+        self.font_size_idx = (self.font_size_idx + 1) % 3
+        self.update_font_size()
 
     def on_error(self, err_msg):
         """ จัดการกรณีเกิดข้อผิดพลาดขึ้นในเธรด socket """
@@ -883,7 +991,7 @@ class PIRCHMainWindow(QMainWindow):
                     color: #ffffff;
                 }
                 QTabBar::tab:hover {
-                    background-color: #cbd5e1;
+                    background-color: #e2e8f0;
                     color: #0f172a;
                 }
                 QSplitter::handle {

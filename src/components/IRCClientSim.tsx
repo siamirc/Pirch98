@@ -59,6 +59,67 @@ export default function IRCClientSim({
   // Message input state
   const [inputValue, setInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Font size setting state (sm = small, md = medium, lg = large)
+  const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
+
+  // Helper to wash/strip prefix symbols from nicknames correctly
+  const cleanNick = (name: string): string => {
+    return name.replace(/^[@+%&~]+/, '');
+  };
+
+  // Add a user to a specific room if they don't already exist (deduplicating using washed nick)
+  const addUserToRoom = (roomName: string, userToAdd: string) => {
+    setRooms((prev) => {
+      const room = prev[roomName];
+      if (!room) return prev;
+      
+      const cleanNew = cleanNick(userToAdd);
+      const exists = room.users.some(u => cleanNick(u) === cleanNew);
+      if (exists) return prev;
+      
+      return {
+        ...prev,
+        [roomName]: {
+          ...room,
+          users: [...room.users, userToAdd],
+        },
+      };
+    });
+  };
+
+  // Remove a user from a specific room (matching using washed nick)
+  const removeUserFromRoom = (roomName: string, userToRemove: string) => {
+    setRooms((prev) => {
+      const room = prev[roomName];
+      if (!room) return prev;
+      
+      const cleanTarget = cleanNick(userToRemove);
+      return {
+        ...prev,
+        [roomName]: {
+          ...room,
+          users: room.users.filter(u => cleanNick(u) !== cleanTarget),
+        },
+      };
+    });
+  };
+
+  // Remove a user from all rooms (e.g., on QUIT)
+  const removeUserFromAllRooms = (userToRemove: string) => {
+    const cleanTarget = cleanNick(userToRemove);
+    setRooms((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((r) => {
+        if (r === 'Status' || r === 'MOTD') return;
+        next[r] = {
+          ...next[r],
+          users: next[r].users.filter(u => cleanNick(u) !== cleanTarget),
+        };
+      });
+      return next;
+    });
+  };
 
   // Scroll to bottom whenever messages or room changes
   useEffect(() => {
@@ -94,24 +155,89 @@ export default function IRCClientSim({
     'เธรดเสริม (Worker Thread) จะคอยสแตนด์บายอ่านข้อมูลจาก socket ตลอดเวลา ถ้ามีข้อมูลใหม่เข้ามา มันจะยิง Signal ไปปลุกหน้าจอหลักให้วาดข้อความขึ้นทันที',
   ];
 
-  // Auto-simulated chatting loop
+  // Auto-simulated chatting and dynamic user events loop (JOIN, PART, KICK)
   useEffect(() => {
     if (!isConnected) return;
 
     const interval = setInterval(() => {
       // Find an active channel room
-      const activeChannels = Object.keys(rooms).filter((r) => r !== 'Status');
+      const activeChannels = Object.keys(rooms).filter((r) => r !== 'Status' && r !== 'MOTD');
       if (activeChannels.length === 0) return;
 
       const randomChannelName = activeChannels[Math.floor(Math.random() * activeChannels.length)];
-      const randomBot = simulatedBotNicks[Math.floor(Math.random() * simulatedBotNicks.length)];
-      const randomQuote = botQuotes[Math.floor(Math.random() * botQuotes.length)];
+      
+      // Determine what event to simulate:
+      // 0.0 - 0.60: Normal Chat Message (60%)
+      // 0.60 - 0.75: User Join (15%)
+      // 0.75 - 0.90: User Part (15%)
+      // 0.90 - 1.00: User Kick (10%)
+      const rand = Math.random();
+      
+      const joinPool = ['Somchai', 'Somsri', 'Supa', 'Anong', 'Kitti', 'Wichai', 'Nipa', 'Noppadon', 'Malai', 'Udom'];
+      const prefixPool = ['@', '+', '', '']; // Chance of Op, Voice or normal
+      const kickReasons = ['Spamming links', 'Flooding the chat', 'Off-topic discussion', 'Please keep it polite', 'Inappropriate nickname'];
 
-      addMessageToRoom(randomChannelName, randomBot, randomQuote, 'user');
-    }, 15000); // Send message every 15 seconds
+      if (rand < 0.60) {
+        // Normal Message
+        const currentUsers = rooms[randomChannelName]?.users || [];
+        if (currentUsers.length === 0) return;
+        
+        const possibleSenders = currentUsers.filter(u => cleanNick(u) !== cleanNick(nick));
+        const senderWithPrefix = possibleSenders.length > 0 
+          ? possibleSenders[Math.floor(Math.random() * possibleSenders.length)]
+          : simulatedBotNicks[Math.floor(Math.random() * simulatedBotNicks.length)];
+        
+        const sender = cleanNick(senderWithPrefix);
+        const randomQuote = botQuotes[Math.floor(Math.random() * botQuotes.length)];
+        
+        addMessageToRoom(randomChannelName, sender, randomQuote, 'user');
+      } else if (rand < 0.75) {
+        // User Join
+        const randomNewNick = joinPool[Math.floor(Math.random() * joinPool.length)];
+        const prefix = prefixPool[Math.floor(Math.random() * prefixPool.length)];
+        const fullNick = prefix + randomNewNick;
+        
+        const currentUsers = rooms[randomChannelName]?.users || [];
+        if (currentUsers.some(u => cleanNick(u) === randomNewNick)) return;
+
+        addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${fullNick} (${randomNewNick}@irc.thaiirc.com) has joined ${randomChannelName}`, 'join');
+        addUserToRoom(randomChannelName, fullNick);
+      } else if (rand < 0.90) {
+        // User Part
+        const currentUsers = rooms[randomChannelName]?.users || [];
+        const leavingCandidates = currentUsers.filter(u => {
+          const name = cleanNick(u);
+          return name !== cleanNick(nick) && name !== 'Python_Expert' && name !== 'PyQt6_Fan';
+        });
+
+        if (leavingCandidates.length === 0) return;
+        const targetUser = leavingCandidates[Math.floor(Math.random() * leavingCandidates.length)];
+
+        addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${targetUser} has left ${randomChannelName}`, 'part');
+        removeUserFromRoom(randomChannelName, targetUser);
+      } else {
+        // User Kick
+        const currentUsers = rooms[randomChannelName]?.users || [];
+        const opsInRoom = currentUsers.filter(u => u.startsWith('@'));
+        const kicker = opsInRoom.length > 0 ? cleanNick(opsInRoom[Math.floor(Math.random() * opsInRoom.length)]) : 'Python_Expert';
+        
+        const kickCandidates = currentUsers.filter(u => {
+          const name = cleanNick(u);
+          return name !== cleanNick(nick) && name !== kicker && name !== 'Python_Expert';
+        });
+
+        if (kickCandidates.length === 0) return;
+        const targetUser = kickCandidates[Math.floor(Math.random() * kickCandidates.length)];
+        const cleanTarget = cleanNick(targetUser);
+        const reason = kickReasons[Math.floor(Math.random() * kickReasons.length)];
+
+        addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${cleanTarget} was kicked by ${kicker} (${reason})`, 'error');
+        removeUserFromRoom(randomChannelName, targetUser);
+      }
+    }, 12000);
 
     return () => clearInterval(interval);
-  }, [isConnected, rooms]);
+  }, [isConnected, rooms, nick]);
 
   const addMessageToRoom = (
     roomName: string,
@@ -245,7 +371,8 @@ export default function IRCClientSim({
         [formattedChan]: {
           name: formattedChan,
           topic: `ห้องพูดคุยเกี่ยวกับ ${formattedChan} และการเขียนโปรแกรม PyQt6`,
-          users: [nick, ...simulatedBotNicks],
+          // Standard initial users with operator @ and voice + prefixes
+          users: [nick, '@Python_Expert', '@PyQt6_Fan', '+ClassicChatter', 'MemeLord', 'RetroUser'],
           messages: [
             {
               id: `join-${formattedChan}-${Date.now()}`,
@@ -314,7 +441,8 @@ export default function IRCClientSim({
               ...prev,
               [r]: {
                 ...currentRoomObj,
-                users: currentRoomObj.users.map((u) => (u === oldNick ? args : u)),
+                // Replace matching user in room (using cleanNick comparison)
+                users: currentRoomObj.users.map((u) => (cleanNick(u) === cleanNick(oldNick) ? u.replace(cleanNick(oldNick), args) : u)),
               },
             };
           });
@@ -332,11 +460,62 @@ export default function IRCClientSim({
           return next;
         });
         addMessageToRoom('Status', 'SYSTEM', `ออกจากห้อง ${leavingRoom} เรียบร้อยแล้ว`, 'part');
+      } else if (command === 'KICK') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'ไม่สามารถเตะผู้ใช้ในหน้าต่างสถานะได้', 'error');
+          return;
+        }
+        const cmdParts = args.split(' ');
+        const targetNickName = cmdParts[0];
+        const reason = cmdParts.slice(1).join(' ') || 'Kicked by operator';
+        
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการเตะ เช่น /kick Somchai', 'error');
+          return;
+        }
+
+        const roomUsers = rooms[currentRoom]?.users || [];
+        const foundUser = roomUsers.find(u => cleanNick(u) === cleanNick(targetNickName));
+
+        if (!foundUser) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `ไม่พบผู้ใช้งาน ${targetNickName} ในห้องแชทนี้`, 'error');
+          return;
+        }
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${cleanNick(foundUser)} ถูกเตะออกจากห้อง ${currentRoom} โดย ${nick} (${reason})`, 'error');
+        removeUserFromRoom(currentRoom, foundUser);
+      } else if (command === 'QUIT') {
+        addMessageToRoom(currentRoom, 'SYSTEM', 'กำลังส่งคำสั่ง QUIT เพื่อออกจากเซิร์ฟเวอร์...', 'system');
+        setTimeout(() => {
+          setIsConnected(false);
+          setIsConnecting(false);
+          setRooms({
+            Status: {
+              name: 'Status',
+              topic: 'IRC Client Connection Status Window',
+              users: [],
+              messages: [
+                ...rooms.Status.messages,
+                {
+                  id: `disconnect-${Date.now()}`,
+                  timestamp: new Date().toLocaleTimeString(),
+                  sender: 'SYSTEM',
+                  text: `*** ตัดการเชื่อมต่อจากเซิร์ฟเวอร์ ${server} เรียบร้อยแล้ว (QUIT).`,
+                  type: 'system',
+                },
+              ],
+              unreadCount: 0,
+            },
+          });
+          setCurrentRoom('Status');
+        }, 600);
       } else if (command === 'HELP') {
         addMessageToRoom(currentRoom, 'SYSTEM', '=== คำสั่ง IRC จำลองที่รองรับในระบบ ===', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/join #ชื่อห้อง - เข้าร่วมห้องแชทใหม่', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/nick ชื่อใหม่ - เปลี่ยนชื่อเล่นของคุณ', 'info');
-        addMessageToRoom(currentRoom, 'SYSTEM', '/leave - ออกจากห้องแชทปัจจุบัน', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/kick ชื่อผู้ใช้ [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/leave หรือ /part - ออกจากห้องแชทปัจจุบัน', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/help - เปิดคู่มือคำสั่งช่วยเหลือนี้', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/me ข้อความการกระทำ - ส่งข้อความสถานะการกระทำ', 'info');
       } else if (command === 'ME') {
@@ -494,6 +673,24 @@ export default function IRCClientSim({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {/* Font size adjustment button */}
+          <button
+            type="button"
+            onClick={() => setFontSize((prev) => (prev === 'sm' ? 'md' : prev === 'md' ? 'lg' : 'sm'))}
+            className={`flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all duration-150 active:scale-95 cursor-pointer shadow-sm ${
+              isDarkMode
+                ? 'bg-slate-800 text-indigo-300 border-slate-700 hover:bg-slate-700'
+                : 'bg-white text-indigo-600 border-slate-200 hover:bg-slate-50'
+            }`}
+            title="ปรับขนาดตัวอักษร (3 ระดับ)"
+            id="btn-irc-font-toggle"
+          >
+            <span>Aa</span>
+            <span className="text-[9px] px-1 bg-slate-200/50 dark:bg-slate-700/80 rounded uppercase">
+              {fontSize === 'sm' ? 'เล็ก' : fontSize === 'md' ? 'กลาง' : 'ใหญ่'}
+            </span>
+          </button>
+
           {/* Dark/Light mode theme switch */}
           <button
             type="button"
@@ -593,8 +790,10 @@ export default function IRCClientSim({
 
       {/* 4. Chat Workspace & Nick List Panel (Split View) */}
       <div className={`flex-1 min-h-0 flex gap-2 p-2 transition-colors ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
-        {/* Chat window */}
-        <div className={`flex-1 min-h-0 border rounded-lg p-3.5 overflow-y-auto flex flex-col gap-1.5 font-mono text-[13px] leading-relaxed shadow-inner select-text transition-colors ${
+        {/* Chat window with dynamic font sizing */}
+        <div className={`flex-1 min-h-0 border rounded-lg p-3.5 overflow-y-auto flex flex-col gap-1.5 font-mono leading-relaxed shadow-inner select-text transition-all ${
+          fontSize === 'sm' ? 'text-[11px]' : fontSize === 'lg' ? 'text-[16px]' : 'text-[13px]'
+        } ${
           isDarkMode ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-200/80 text-slate-800'
         }`}>
           {activeRoomData.messages.map((msg) => (
@@ -635,25 +834,40 @@ export default function IRCClientSim({
             <div className="flex flex-col gap-0.5">
               {[...activeRoomData.users]
                 .sort((a, b) => {
-                  const isOpA = a === 'Python_Expert' || a === 'PyQt6_Fan';
-                  const isOpB = b === 'Python_Expert' || b === 'PyQt6_Fan';
-                  const isVoiceA = a === 'ClassicChatter';
-                  const isVoiceB = b === 'ClassicChatter';
+                  const cleanA = cleanNick(a);
+                  const cleanB = cleanNick(b);
                   
-                  if (isOpA && !isOpB) return -1;
-                  if (!isOpA && isOpB) return 1;
-                  if (isVoiceA && !isVoiceB) return -1;
-                  if (!isVoiceA && isVoiceB) return 1;
-                  return a.localeCompare(b);
+                  const getRoleWeight = (user: string): number => {
+                    if (user.startsWith('~')) return 0;
+                    if (user.startsWith('&')) return 1;
+                    if (user.startsWith('@') || user === 'Python_Expert' || user === 'PyQt6_Fan') return 2;
+                    if (user.startsWith('%')) return 3;
+                    if (user.startsWith('+') || user === 'ClassicChatter') return 4;
+                    return 5;
+                  };
+
+                  const roleA = getRoleWeight(a);
+                  const roleB = getRoleWeight(b);
+                  
+                  if (roleA !== roleB) {
+                    return roleA - roleB;
+                  }
+                  return cleanA.localeCompare(cleanB);
                 })
                 .map((username) => {
-                  const isMe = username === nick;
-                  const isOp = username === 'Python_Expert' || username === 'PyQt6_Fan';
-                  const isVoice = username === 'ClassicChatter';
+                  const displayNick = cleanNick(username);
+                  const isMe = displayNick === cleanNick(nick);
+                  const isOp = username.startsWith('@') || username.startsWith('&') || username.startsWith('~') || username === 'Python_Expert' || username === 'PyQt6_Fan';
+                  const isVoice = username.startsWith('+') || username.startsWith('%') || username === 'ClassicChatter';
+                  const hasPrefix = /^[@+%&~]/.test(username);
+                  const prefixChar = hasPrefix ? username[0] : '';
+                  
                   return (
                     <div
                        key={username}
-                       className={`px-2 py-1 rounded-md text-xs flex items-center justify-between font-sans transition-colors ${
+                       className={`px-2 py-1 rounded-md flex items-center justify-between font-sans transition-colors ${
+                         fontSize === 'sm' ? 'text-[10px]' : fontSize === 'lg' ? 'text-[14px]' : 'text-xs'
+                       } ${
                          isMe
                            ? isDarkMode
                              ? 'bg-indigo-950/60 text-indigo-300 font-bold'
@@ -664,7 +878,7 @@ export default function IRCClientSim({
                        }`}
                     >
                       <span className="truncate">
-                        {isOp ? `@${username}` : isVoice ? `+${username}` : username}
+                        {hasPrefix ? `${prefixChar}${displayNick}` : (isOp ? `@${displayNick}` : isVoice ? `+${displayNick}` : displayNick)}
                       </span>
                       {isOp ? (
                         <span className={`text-[9px] font-bold px-1 py-0.2 rounded scale-95 shadow-sm ${
