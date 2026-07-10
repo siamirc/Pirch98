@@ -220,13 +220,13 @@ class PIRCHMainWindow(QMainWindow):
 
         # ช่องใส่ Nickname
         top_layout.addWidget(QLabel("Nick:"))
-        self.nick_input = QLineEdit("pyIRCH_Guest")
+        self.nick_input = QLineEdit("pyIRCH")
         self.nick_input.setFixedWidth(100)
         top_layout.addWidget(self.nick_input)
 
         # ช่องใส่ Channel ที่ต้องการ Join หลังจาก Connect สำเร็จ
         top_layout.addWidget(QLabel("Join Chan:"))
-        self.channel_input = QLineEdit("#pyqt6")
+        self.channel_input = QLineEdit("#thaiirc")
         self.channel_input.setFixedWidth(80)
         top_layout.addWidget(self.channel_input)
 
