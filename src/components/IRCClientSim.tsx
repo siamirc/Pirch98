@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon } from 'lucide-react';
+import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff } from 'lucide-react';
 import { IRCMessage, IRCChannel } from '../types';
 
 interface IRCClientSimProps {
@@ -21,6 +21,13 @@ export default function IRCClientSim({
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const [mentionNotify, setMentionNotify] = useState<boolean>(true);
+
+  // Online Radio states
+  const [radioPlaying, setRadioPlaying] = useState<boolean>(false);
+  const [currentStation, setCurrentStation] = useState<'mquest' | 'live' | null>(null);
+  const [radioVolume, setRadioVolume] = useState<number>(0.5);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Chat log state
   const [currentRoom, setCurrentRoom] = useState<string>('Status');
@@ -119,6 +126,74 @@ export default function IRCClientSim({
       });
       return next;
     });
+  };
+
+  // Online Radio Effects & Handlers
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = radioVolume;
+    }
+  }, [radioVolume]);
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const toggleRadio = (station: 'mquest' | 'live') => {
+    const isCurrentlyPlayingThis = radioPlaying && currentStation === station;
+
+    if (isCurrentlyPlayingThis) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setRadioPlaying(false);
+      setCurrentStation(null);
+      addMessageToRoom('Status', 'SYSTEM', '*** หยุดเล่นวิทยุออนไลน์', 'system');
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+
+      const url = station === 'mquest'
+        ? 'http://icecast.thaiirc.com:8000/ices'
+        : 'http://radio.thaiirc.com:8002/ices';
+
+      const stationName = station === 'mquest' ? 'MQuest Radio' : 'Live Radio';
+
+      try {
+        const audio = new Audio(url);
+        audio.crossOrigin = 'anonymous';
+        audio.volume = radioVolume;
+        audioRef.current = audio;
+
+        setRadioPlaying(true);
+        setCurrentStation(station);
+
+        audio.play().catch((err) => {
+          console.warn('Audio play auto-blocked or failed:', err);
+        });
+
+        addMessageToRoom('Status', 'SYSTEM', `*** กำลังเปิดวิทยุออนไลน์: ${stationName} (${url})`, 'join');
+      } catch (e) {
+        console.error('Audio initialization error:', e);
+      }
+    }
+  };
+
+  const stopRadio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setRadioPlaying(false);
+    setCurrentStation(null);
+    addMessageToRoom('Status', 'SYSTEM', '*** หยุดเล่นวิทยุออนไลน์เรียบร้อยแล้ว', 'system');
   };
 
   // Scroll to bottom whenever messages or room changes
@@ -239,19 +314,64 @@ export default function IRCClientSim({
     return () => clearInterval(interval);
   }, [isConnected, rooms, nick]);
 
+  const playMentionSound = () => {
+    if (!mentionNotify) return;
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      
+      // Beautiful retro chat alert chime: High pitch sweet dual-tone synth
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now); // D5
+      osc1.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
+      gain1.gain.setValueAtTime(0.12, now);
+      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.28);
+
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(698.46, now + 0.06); // F5
+      osc2.frequency.exponentialRampToValueAtTime(1046.50, now + 0.18); // C6
+      gain2.gain.setValueAtTime(0.12, now + 0.06);
+      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.32);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(now + 0.06);
+      osc2.stop(now + 0.35);
+    } catch (err) {
+      console.warn('Web Audio API notification error:', err);
+    }
+  };
+
   const addMessageToRoom = (
     roomName: string,
     sender: string,
     text: string,
     type: IRCMessage['type'] = 'user'
   ) => {
+    const cleanCurrentNick = cleanNick(nick);
+    const isMention = type === 'user' && 
+                      cleanNick(sender) !== cleanCurrentNick && 
+                      text.toLowerCase().includes(cleanCurrentNick.toLowerCase());
+
     const newMessage: IRCMessage = {
       id: `${roomName}-${Date.now()}-${Math.random()}`,
       timestamp: new Date().toLocaleTimeString(),
       sender,
       text,
       type,
+      isMention,
     };
+
+    if (isMention && mentionNotify) {
+      playMentionSound();
+    }
 
     setRooms((prev) => {
       const room = prev[roomName];
@@ -712,6 +832,33 @@ export default function IRCClientSim({
             {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
           </button>
 
+          {/* Mention Tag Notification Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setMentionNotify(!mentionNotify)}
+            className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all duration-150 active:scale-95 cursor-pointer shadow-sm ${
+              mentionNotify
+                ? isDarkMode
+                  ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/50 hover:bg-emerald-950/60 shadow-[0_0_8px_rgba(16,185,129,0.15)]'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                : isDarkMode
+                ? 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+            }`}
+            title={mentionNotify ? "ปิดระบบแจ้งเตือนการแทกชื่อ" : "เปิดระบบแจ้งเตือนการแทกชื่อ"}
+            id="btn-irc-mention-toggle"
+          >
+            {mentionNotify ? <Bell size={13} className="text-emerald-500 animate-swing" /> : <BellOff size={13} />}
+            <span>แทกชื่อ</span>
+            <span className={`text-[9px] px-1 rounded uppercase font-bold ${
+              mentionNotify 
+                ? 'bg-emerald-500/20 text-emerald-500 dark:text-emerald-400' 
+                : 'bg-slate-200/50 dark:bg-slate-700/80 text-slate-500'
+            }`}>
+              {mentionNotify ? 'เปิด' : 'ปิด'}
+            </span>
+          </button>
+
           <button
             onClick={handleConnect}
             disabled={isConnecting}
@@ -740,6 +887,145 @@ export default function IRCClientSim({
               </>
             )}
           </button>
+        </div>
+      </div>
+
+      {/* 1.5 Online Radio Bar - Modern Futuristic Design */}
+      <div className={`py-2 px-4 flex flex-wrap items-center gap-3.5 border-b transition-all ${
+        isDarkMode 
+          ? 'bg-slate-900 border-slate-800 text-slate-200 shadow-[inset_0_-1px_0_rgba(255,255,255,0.05)]' 
+          : 'bg-white border-slate-200 text-slate-700'
+      }`}>
+        {/* Style block for visualizer animation keyframes */}
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes eq-bar {
+            0% { height: 4px; }
+            50% { height: 20px; }
+            100% { height: 6px; }
+          }
+          .animate-eq-1 { animation: eq-bar 0.7s ease-in-out infinite alternate; }
+          .animate-eq-2 { animation: eq-bar 1.1s ease-in-out infinite alternate 0.15s; }
+          .animate-eq-3 { animation: eq-bar 0.5s ease-in-out infinite alternate 0.3s; }
+          .animate-eq-4 { animation: eq-bar 0.9s ease-in-out infinite alternate 0.05s; }
+          .animate-eq-5 { animation: eq-bar 0.6s ease-in-out infinite alternate 0.2s; }
+          .animate-eq-6 { animation: eq-bar 1.0s ease-in-out infinite alternate 0.4s; }
+        `}} />
+
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Radio size={15} className={`text-indigo-500 shrink-0 ${radioPlaying ? 'animate-bounce' : ''}`} />
+            {radioPlaying && (
+              <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+          </div>
+          <span className={`text-[11px] font-bold tracking-wider uppercase font-sans ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>
+            Radio Online
+          </span>
+          {radioPlaying && (
+            <span className="text-[9px] bg-rose-500/10 dark:bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded-full font-bold animate-pulse">
+              LIVE
+            </span>
+          )}
+        </div>
+
+        {/* Station Buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => toggleRadio('mquest')}
+            className={`px-3 py-1 text-xs font-bold rounded-md border transition-all duration-150 cursor-pointer active:scale-95 ${
+              currentStation === 'mquest' && radioPlaying
+                ? 'bg-cyan-500 text-white border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                : isDarkMode
+                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+            }`}
+            title="MQuest Radio Stream"
+          >
+            MQuest Radio
+          </button>
+
+          <button
+            onClick={() => toggleRadio('live')}
+            className={`px-3 py-1 text-xs font-bold rounded-md border transition-all duration-150 cursor-pointer active:scale-95 ${
+              currentStation === 'live' && radioPlaying
+                ? 'bg-purple-500 text-white border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+                : isDarkMode
+                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800'
+            }`}
+            title="Live Radio Stream"
+          >
+            Live Radio
+          </button>
+
+          {radioPlaying && (
+            <button
+              onClick={stopRadio}
+              className={`p-1 text-xs font-bold rounded-md border border-rose-500/30 text-rose-500 hover:bg-rose-500 hover:text-white transition-all cursor-pointer`}
+              title="Stop playback"
+            >
+              <Square size={12} className="fill-current" />
+            </button>
+          )}
+        </div>
+
+        {/* Music spectrum visualizer */}
+        <div className="hidden sm:flex items-center gap-1.5 px-3 border-l border-slate-700/10 dark:border-slate-800/60">
+          <div className="flex items-end gap-[3px] h-5">
+            {radioPlaying ? (
+              <>
+                <div className="w-[3px] bg-cyan-400 rounded-t animate-eq-1" />
+                <div className="w-[3px] bg-indigo-400 rounded-t animate-eq-2" />
+                <div className="w-[3px] bg-purple-400 rounded-t animate-eq-3" />
+                <div className="w-[3px] bg-pink-400 rounded-t animate-eq-4" />
+                <div className="w-[3px] bg-rose-400 rounded-t animate-eq-5" />
+                <div className="w-[3px] bg-emerald-400 rounded-t animate-eq-6" />
+              </>
+            ) : (
+              <>
+                <div className="w-[3px] bg-slate-300 dark:bg-slate-700 rounded-t h-1.5" />
+                <div className="w-[3px] bg-slate-300 dark:bg-slate-700 rounded-t h-1" />
+                <div className="w-[3px] bg-slate-300 dark:bg-slate-700 rounded-t h-1" />
+                <div className="w-[3px] bg-slate-300 dark:bg-slate-700 rounded-t h-1" />
+                <div className="w-[3px] bg-slate-300 dark:bg-slate-700 rounded-t h-1" />
+                <div className="w-[3px] bg-slate-300 dark:bg-slate-700 rounded-t h-1.5" />
+              </>
+            )}
+          </div>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono select-none">
+            {radioPlaying 
+              ? currentStation === 'mquest' 
+                ? 'playing mquest...' 
+                : 'playing live...' 
+              : 'radio offline'}
+          </span>
+        </div>
+
+        {/* Volume controls */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setRadioVolume((prev) => (prev === 0 ? 0.5 : 0))}
+            className={`text-slate-400 hover:text-indigo-500 transition-colors cursor-pointer`}
+            title={radioVolume === 0 ? "Unmute" : "Mute"}
+          >
+            {radioVolume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={radioVolume}
+            onChange={(e) => setRadioVolume(parseFloat(e.target.value))}
+            className="w-16 h-1 rounded bg-slate-200 dark:bg-slate-700 accent-indigo-500 cursor-pointer outline-none"
+            title={`Volume: ${Math.round(radioVolume * 100)}%`}
+          />
+          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 min-w-[24px] text-right">
+            {Math.round(radioVolume * 100)}%
+          </span>
         </div>
       </div>
 
@@ -810,7 +1096,13 @@ export default function IRCClientSim({
             return (
               <div 
                 key={msg.id} 
-                className={`flex gap-3 items-start py-1 rounded px-2 hover:bg-slate-500/5 dark:hover:bg-slate-400/5 transition-colors`}
+                className={`flex gap-3 items-start py-1 rounded px-2 transition-all ${
+                  msg.isMention && mentionNotify
+                    ? isDarkMode 
+                      ? 'bg-amber-500/10 border-l-2 border-amber-500 shadow-[inset_1px_0_0_rgba(245,158,11,0.05)] text-amber-200' 
+                      : 'bg-amber-500/5 border-l-2 border-amber-500 shadow-[inset_1px_0_0_rgba(245,158,11,0.1)] text-amber-900'
+                    : 'hover:bg-slate-500/5 dark:hover:bg-slate-400/5'
+                }`}
               >
                 {/* 1. Time Column */}
                 <span className={`select-none font-sans font-medium text-right w-11 shrink-0 select-none text-[10px] self-center transition-colors ${
@@ -827,7 +1119,11 @@ export default function IRCClientSim({
                 {/* 3. Sender / Icon Column */}
                 <div className="w-24 shrink-0 text-right pr-1 select-none font-bold truncate">
                   {isUserMsg ? (
-                    <span className={isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}>
+                    <span className={
+                      msg.isMention && mentionNotify
+                        ? 'text-amber-500 font-extrabold'
+                        : isDarkMode ? 'text-indigo-400' : 'text-indigo-600'
+                    }>
                       {msg.sender}
                     </span>
                   ) : (

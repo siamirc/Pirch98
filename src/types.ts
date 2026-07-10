@@ -4,6 +4,7 @@ export interface IRCMessage {
   sender: string;
   text: string;
   type: 'system' | 'user' | 'error' | 'motd' | 'join' | 'part' | 'info';
+  isMention?: boolean;
 }
 
 export interface IRCChannel {

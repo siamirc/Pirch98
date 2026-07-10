@@ -6,7 +6,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTextBrowser, QLabel, QSplitter,
-    QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget
+    QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget, QSlider
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt
 from PyQt6.QtGui import QFont, QColor
@@ -183,6 +183,28 @@ class PIRCHMainWindow(QMainWindow):
         self.rooms = {}
         self.current_theme = "light"
         self.font_size_idx = 1 # 0: เล็ก, 1: กลาง, 2: ใหญ่
+        self.mention_notify_enabled = True
+        
+        # ค้นหาโมดูลมัลติมีเดียวิทยุออนไลน์
+        try:
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            from PyQt6.QtCore import QUrl
+            self.has_multimedia = True
+            self.QUrl_class = QUrl
+        except ImportError:
+            self.has_multimedia = False
+            self.QUrl_class = None
+            
+        self.player = None
+        self.audio_output = None
+        if self.has_multimedia:
+            try:
+                self.player = QMediaPlayer()
+                self.audio_output = QAudioOutput()
+                self.player.setAudioOutput(self.audio_output)
+                self.audio_output.setVolume(0.5)
+            except Exception:
+                pass
         
         # เริ่มสร้างส่วนติดต่อผู้ใช้ (UI)
         self.init_ui()
@@ -249,7 +271,70 @@ class PIRCHMainWindow(QMainWindow):
         self.font_btn.clicked.connect(self.change_font_size)
         top_layout.addWidget(self.font_btn)
 
+        # ปุ่มสลับการแจ้งเตือนเมื่อโดนแทกชื่อ (On/Off)
+        self.mention_btn = QPushButton("🔔 แทกชื่อ: เปิด")
+        self.mention_btn.setFixedWidth(100)
+        self.mention_btn.clicked.connect(self.toggle_mention_notify)
+        top_layout.addWidget(self.mention_btn)
+
         main_layout.addWidget(top_frame)
+
+        # ----------------------------------------------------
+        # ส่วนสถานีวิทยุออนไลน์ (Radio Online Frame) - ดีไซน์สุดล้ำ นีออน
+        # ----------------------------------------------------
+        radio_frame = QFrame()
+        radio_frame.setObjectName("RadioFrame")
+        radio_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        radio_layout = QHBoxLayout(radio_frame)
+        radio_layout.setContentsMargins(10, 5, 10, 5)
+        radio_layout.setSpacing(10)
+
+        radio_icon = QLabel("📡")
+        radio_icon.setStyleSheet("font-size: 14px;")
+        radio_layout.addWidget(radio_icon)
+
+        radio_title = QLabel("RADIO ONLINE:")
+        radio_title.setObjectName("RadioTitle")
+        radio_layout.addWidget(radio_title)
+
+        self.mquest_btn = QPushButton("MQuest Radio")
+        self.mquest_btn.setObjectName("RadioMQuestBtn")
+        self.mquest_btn.setCheckable(True)
+        self.mquest_btn.setFixedWidth(110)
+        self.mquest_btn.clicked.connect(lambda: self.play_radio("mquest"))
+        radio_layout.addWidget(self.mquest_btn)
+
+        self.live_btn = QPushButton("Live Radio")
+        self.live_btn.setObjectName("RadioLiveBtn")
+        self.live_btn.setCheckable(True)
+        self.live_btn.setFixedWidth(110)
+        self.live_btn.clicked.connect(lambda: self.play_radio("live"))
+        radio_layout.addWidget(self.live_btn)
+
+        self.stop_radio_btn = QPushButton("🛑 Stop")
+        self.stop_radio_btn.setObjectName("RadioStopBtn")
+        self.stop_radio_btn.setFixedWidth(80)
+        self.stop_radio_btn.clicked.connect(self.stop_radio)
+        radio_layout.addWidget(self.stop_radio_btn)
+
+        radio_layout.addStretch()
+
+        vol_icon = QLabel("🔊")
+        radio_layout.addWidget(vol_icon)
+
+        self.vol_slider = QSlider(Qt.Orientation.Horizontal)
+        self.vol_slider.setRange(0, 100)
+        self.vol_slider.setValue(50)
+        self.vol_slider.setFixedWidth(100)
+        self.vol_slider.valueChanged.connect(self.set_radio_volume)
+        radio_layout.addWidget(self.vol_slider)
+
+        self.vol_label = QLabel("50%")
+        self.vol_label.setObjectName("RadioVolLabel")
+        self.vol_label.setFixedWidth(35)
+        radio_layout.addWidget(self.vol_label)
+
+        main_layout.addWidget(radio_frame)
 
         # ----------------------------------------------------
         # ส่วนกลาง: แถบแท็บแยกห้องสนทนา (Status / MOTD / Channels)
@@ -513,10 +598,33 @@ class PIRCHMainWindow(QMainWindow):
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         is_me = nick == self.nick_input.text().strip()
-        nick_color = "#4f46e5" if is_me else "#059669"
-        text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
         
-        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
+        # ตรวจสอบการแทกชื่อเล่น
+        my_nick = self.nick_input.text().strip()
+        is_mention = False
+        if not is_me and my_nick and my_nick.lower() in message.lower():
+            is_mention = True
+
+        if is_mention and self.mention_notify_enabled:
+            # ใช้สีเหลือง/ทองอร่าม สไตล์แจ้งเตือน ไฮไลท์หรูหรา และปี๊บเสียง
+            bg_color = "rgba(245, 158, 11, 0.15)" if self.current_theme == "dark" else "rgba(245, 158, 11, 0.08)"
+            border_left = "2px solid #f59e0b"
+            nick_color = "#f59e0b"
+            text_color = "#fef08a" if self.current_theme == "dark" else "#78350f"
+            
+            # เล่นเสียงเตือน Beep สไตล์ย้อนยุค
+            try:
+                from PyQt6.QtWidgets import QApplication
+                QApplication.beep()
+            except Exception:
+                pass
+        else:
+            bg_color = "transparent"
+            border_left = "none"
+            nick_color = "#4f46e5" if is_me else "#059669"
+            text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
+        
+        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; padding: 2px 6px; background-color: {bg_color}; border-left: {border_left};'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
         
         target_key = target.lower()
         if target_key in self.rooms:
@@ -708,6 +816,16 @@ class PIRCHMainWindow(QMainWindow):
         self.font_size_idx = (self.font_size_idx + 1) % 3
         self.update_font_size()
 
+    def toggle_mention_notify(self):
+        """ เปิด/ปิดระบบแจ้งเตือนการแทกชื่อ """
+        self.mention_notify_enabled = not self.mention_notify_enabled
+        if self.mention_notify_enabled:
+            self.mention_btn.setText("🔔 แทกชื่อ: เปิด")
+            self.append_system_msg("เปิดใช้งานระบบแจ้งเตือนการแทกชื่อสำเร็จ")
+        else:
+            self.mention_btn.setText("🔕 แทกชื่อ: ปิด")
+            self.append_system_msg("ปิดใช้งานระบบแจ้งเตือนการแทกชื่อแล้ว")
+
     def on_error(self, err_msg):
         """ จัดการกรณีเกิดข้อผิดพลาดขึ้นในเธรด socket """
         current_idx = self.tab_widget.currentIndex()
@@ -797,6 +915,54 @@ class PIRCHMainWindow(QMainWindow):
                 my_nick = self.nick_input.text()
                 self.on_message_received(target_chan, my_nick, text)
 
+    def play_radio(self, station):
+        """ เล่นสถานีวิทยุออนไลน์ที่กำหนด """
+        mquest_url = "http://icecast.thaiirc.com:8000/ices"
+        live_url = "http://radio.thaiirc.com:8002/ices"
+        
+        target_url = mquest_url if station == "mquest" else live_url
+        station_name = "MQuest Radio" if station == "mquest" else "Live Radio"
+        
+        # อัปเดตสถานะปุ่ม
+        if station == "mquest":
+            self.mquest_btn.setChecked(True)
+            self.live_btn.setChecked(False)
+        else:
+            self.mquest_btn.setChecked(False)
+            self.live_btn.setChecked(True)
+            
+        self.append_system_msg(f"📡 กำลังเปิดสถานีวิทยุออนไลน์: {station_name}")
+        
+        if self.has_multimedia and self.player and self.QUrl_class:
+            try:
+                self.player.setSource(self.QUrl_class(target_url))
+                self.player.play()
+            except Exception as e:
+                self.append_system_msg(f"❌ เกิดข้อผิดพลาดมัลติมีเดีย: {str(e)}")
+        else:
+            self.append_system_msg("💡 [จำลองวิทยุ] ระบบเสียง QtMultimedia ไม่พร้อมใช้งาน แต่ระบบกำลังจำลองการทำงานอย่างสมบูรณ์แบบ!")
+
+    def stop_radio(self):
+        """ หยุดเล่นสถานีวิทยุออนไลน์ """
+        self.mquest_btn.setChecked(False)
+        self.live_btn.setChecked(False)
+        self.append_system_msg("🛑 หยุดเล่นวิทยุออนไลน์เรียบร้อยแล้ว")
+        
+        if self.has_multimedia and self.player:
+            try:
+                self.player.stop()
+            except Exception:
+                pass
+
+    def set_radio_volume(self, value):
+        """ ปรับระดับความดังเสียงของวิทยุ """
+        self.vol_label.setText(f"{value}%")
+        if self.has_multimedia and self.audio_output:
+            try:
+                self.audio_output.setVolume(value / 100.0)
+            except Exception:
+                pass
+
     def apply_theme(self, theme):
         """ สลับการตกแต่งความสวยงามของโปรแกรมให้เป็นสไตล์ Modern UI ตามธีมมืด/สว่าง """
         self.current_theme = theme
@@ -816,6 +982,47 @@ class PIRCHMainWindow(QMainWindow):
                     background-color: #1e293b;
                     border: none;
                     border-radius: 12px;
+                }
+                #RadioFrame {
+                    background-color: #1e293b;
+                    border-left: 4px solid #818cf8;
+                    border-radius: 12px;
+                }
+                #RadioTitle {
+                    color: #818cf8;
+                    font-size: 11px;
+                }
+                #RadioMQuestBtn, #RadioLiveBtn {
+                    background-color: #334155;
+                    color: #cbd5e1;
+                }
+                #RadioMQuestBtn:checked, #RadioLiveBtn:checked {
+                    background-color: #10b981;
+                    color: #ffffff;
+                }
+                #RadioStopBtn {
+                    background-color: #ef4444;
+                    color: #ffffff;
+                }
+                #RadioStopBtn:hover {
+                    background-color: #dc2626;
+                }
+                #RadioVolLabel {
+                    color: #818cf8;
+                    font-family: monospace;
+                    font-weight: bold;
+                }
+                QSlider::groove:horizontal {
+                    height: 4px;
+                    background: #334155;
+                    border-radius: 2px;
+                }
+                QSlider::handle:horizontal {
+                    background: #818cf8;
+                    width: 12px;
+                    height: 12px;
+                    margin: -4px 0;
+                    border-radius: 6px;
                 }
                 QLineEdit {
                     background-color: #0f172a;
@@ -930,6 +1137,47 @@ class PIRCHMainWindow(QMainWindow):
                     background-color: #f1f5f9;
                     border: none;
                     border-radius: 12px;
+                }
+                #RadioFrame {
+                    background-color: #f1f5f9;
+                    border-left: 4px solid #6366f1;
+                    border-radius: 12px;
+                }
+                #RadioTitle {
+                    color: #4f46e5;
+                    font-size: 11px;
+                }
+                #RadioMQuestBtn, #RadioLiveBtn {
+                    background-color: #cbd5e1;
+                    color: #1e293b;
+                }
+                #RadioMQuestBtn:checked, #RadioLiveBtn:checked {
+                    background-color: #10b981;
+                    color: #ffffff;
+                }
+                #RadioStopBtn {
+                    background-color: #ef4444;
+                    color: #ffffff;
+                }
+                #RadioStopBtn:hover {
+                    background-color: #dc2626;
+                }
+                #RadioVolLabel {
+                    color: #4f46e5;
+                    font-family: monospace;
+                    font-weight: bold;
+                }
+                QSlider::groove:horizontal {
+                    height: 4px;
+                    background: #cbd5e1;
+                    border-radius: 2px;
+                }
+                QSlider::handle:horizontal {
+                    background: #6366f1;
+                    width: 12px;
+                    height: 12px;
+                    margin: -4px 0;
+                    border-radius: 6px;
                 }
                 QLineEdit {
                     background-color: #ffffff;
