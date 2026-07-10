@@ -1193,6 +1193,23 @@ class PIRCHMainWindow(QMainWindow):
             elif cmd == "RAW":
                 if args and self.irc_worker:
                     self.irc_worker.send_line(args)
+            elif cmd == "HELP":
+                self.append_system_msg("^B=== คู่มือคำสั่งช่วยเหลือและการจัดรูปแบบตัวอักษร ===^B")
+                self.append_system_msg("^B[คำสั่งพื้นฐาน]^B")
+                self.append_system_msg("  /join #ชื่อห้องแชท - เข้าร่วมห้องแชท (เช่น /join #Siam)")
+                self.append_system_msg("  /part - ออกจากห้องแชทปัจจุบัน")
+                self.append_system_msg("  /nick ชื่อใหม่ - เปลี่ยนชื่อเล่นของคุณ")
+                self.append_system_msg("  /quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์")
+                self.append_system_msg("  /help - เปิดคู่มือคำสั่งช่วยเหลือนี้")
+                self.append_system_msg("^B[การจัดรูปแบบข้อความ mIRC]^B")
+                self.append_system_msg("  ^B^Bตัวหนา^B^B - พิมพ์ ^Bข้อความ^B หรือ &Bข้อความ&B")
+                self.append_system_msg("  ^U^Uขีดเส้นใต้^U^U - พิมพ์ ^Uข้อความ^U หรือ &Uข้อความ&U")
+                self.append_system_msg("  ^O^Oรีเซ็ตค่ารูปแบบอักษร^O^O - พิมพ์ ^O หรือ &O")
+                self.append_system_msg("^B[การใส่สีข้อความ mIRC]^B")
+                self.append_system_msg("  พิมพ์ ^C ตามด้วยรหัสสี (0-15) เพื่อเปลี่ยนสีอักษร เช่น:")
+                self.append_system_msg("    ^C0,1ขาวบนดำ^O | ^C4แดง^O | ^C3เขียว^O | ^C12ฟ้า^O | ^C6ม่วง^O | ^C7ส้ม^O | ^C8เหลือง^O")
+                self.append_system_msg("    ^C9เขียวอ่อน^O | ^C10ฟ้าอมเขียว^O | ^C11ฟ้าอ่อน^O | ^C13ชมพู^O | ^C14เทา^O")
+                self.append_system_msg("  ตัวอย่างการจัดสีและพื้นหลัง: พิมพ์ ^Cสีอักษร,สีพื้นหลัง เช่น ^C0,4สีขาวบนพื้นหลังสีแดง^O")
             else:
                 # ส่ง Log คำสั่งไม่ถูกต้องไปยังหน้าจอแชทปัจจุบัน
                 current_idx = self.tab_widget.currentIndex()
