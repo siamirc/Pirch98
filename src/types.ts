@@ -1,0 +1,29 @@
+export interface IRCMessage {
+  id: string;
+  timestamp: string;
+  sender: string;
+  text: string;
+  type: 'system' | 'user' | 'error' | 'motd' | 'join' | 'part' | 'info';
+}
+
+export interface IRCChannel {
+  name: string;
+  topic: string;
+  users: string[];
+  messages: IRCMessage[];
+  unreadCount: number;
+}
+
+export interface DesktopWindow {
+  id: string;
+  title: string;
+  type: 'pirch' | 'python_code' | 'about_pirch' | 'help';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  isOpen: boolean;
+  zIndex: number;
+}
