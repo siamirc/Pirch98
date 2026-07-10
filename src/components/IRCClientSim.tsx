@@ -18,6 +18,9 @@ export default function IRCClientSim({
   const [port, setPort] = useState('6667');
   const [nick, setNick] = useState(initialNick);
   const [targetChannel, setTargetChannel] = useState(initialChannel);
+  const [password, setPassword] = useState('');
+  const [useSSL, setUseSSL] = useState(false);
+  const [registeredUsers, setRegisteredUsers] = useState<string[]>(['python_expert', 'pyqt6_fan', 'classicchatter']);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -251,7 +254,7 @@ export default function IRCClientSim({
       
       const joinPool = ['Somchai', 'Somsri', 'Supa', 'Anong', 'Kitti', 'Wichai', 'Nipa', 'Noppadon', 'Malai', 'Udom'];
       const prefixPool = ['@', '+', '', '']; // Chance of Op, Voice or normal
-      const kickReasons = ['Spamming links', 'Flooding the chat', 'Off-topic discussion', 'Please keep it polite', 'Inappropriate nickname'];
+     const kickReasons = ['Spamming links', 'Flooding the chat', 'Off-topic discussion', 'Please keep it polite', 'Inappropriate nickname'];
 
       if (rand < 0.60) {
         // Normal Message
@@ -513,20 +516,96 @@ export default function IRCClientSim({
     setIsConnecting(true);
     setCurrentRoom('Status');
 
-    // Sequence of connecting logs
-    setTimeout(() => {
-      addMessageToRoom('Status', 'SYSTEM', `กำลังพยายามเปิด Socket เชื่อมต่อไปยัง ${server} พอร์ต ${port}...`, 'system');
-    }, 400);
+    // Generate random 10-char ident 'deskXXXXXX' where XXXXXX are numbers and a-f characters
+    const chars = '0123456789abcdef';
+    let randPart = '';
+    for (let i = 0; i < 6; i++) {
+      randPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const sessionIdent = `desk${randPart}`;
 
-    setTimeout(() => {
-      addMessageToRoom('Status', 'SYSTEM', `เชื่อมต่อสำเร็จ! กำลังส่งสัญญานระบุตัวตน (NICK & USER)...`, 'system');
-    }, 1000);
+    let delay = 300;
 
+    // 1. Initial Connection info
+    setTimeout(() => {
+      addMessageToRoom(
+        'Status', 
+        'SYSTEM', 
+        `กำลังพยายามเปิด Socket เชื่อมต่อไปยัง ${server} พอร์ต ${port} ${useSSL ? 'ด้วยโปรโตคอลความปลอดภัย SSL/TLS...' : 'ด้วยพอร์ตธรรมดา (Non-SSL)...'}`, 
+        'system'
+      );
+    }, delay);
+
+    // 2. SSL Handshake if enabled
+    if (useSSL) {
+      delay += 500;
+      setTimeout(() => {
+        addMessageToRoom('Status', 'SYSTEM', `*** กำลังเริ่มต้นกระบวนการจับมือความปลอดภัย (SSL/TLS Handshake)...`, 'system');
+      }, delay);
+
+      delay += 600;
+      setTimeout(() => {
+        addMessageToRoom('Status', 'SYSTEM', `*** SSL/TLS Handshake สำเร็จ! การเข้ารหัสปลอดภัยสมบูรณ์ (Cipher Suite: TLS_AES_256_GCM_SHA384)`, 'system');
+      }, delay);
+    }
+
+    // 3. Socket Connected & Send NICK / USER
+    delay += 500;
+    setTimeout(() => {
+      addMessageToRoom('Status', 'SYSTEM', `เชื่อมต่อกับเซิร์ฟเวอร์สำเร็จ! ส่งสัญญานระบุตัวตนพื้นฐาน (NICK & USER)`, 'system');
+    }, delay);
+
+    delay += 400;
     setTimeout(() => {
       addMessageToRoom('Status', 'SYSTEM', `-> NICK ${nick}`, 'info');
-      addMessageToRoom('Status', 'SYSTEM', `-> USER pyIRCH 0 * :PyQt6 pIRCH Client`, 'info');
-    }, 1500);
+      addMessageToRoom('Status', 'SYSTEM', `-> USER ${sessionIdent} 0 * :PyQt6 pIRCH Client`, 'info');
+    }, delay);
 
+    // 4. SASL Authentication & NickServ registration if password is provided
+    if (password) {
+      delay += 600;
+      setTimeout(() => {
+        addMessageToRoom('Status', 'SYSTEM', `-> CAP REQ :sasl`, 'info');
+        addMessageToRoom('Status', 'SYSTEM', `<- CAP * ACK :sasl`, 'system');
+      }, delay);
+
+      delay += 500;
+      setTimeout(() => {
+        addMessageToRoom('Status', 'SYSTEM', `-> AUTHENTICATE PLAIN`, 'info');
+        addMessageToRoom('Status', 'SYSTEM', `<- AUTHENTICATE +`, 'system');
+      }, delay);
+
+      delay += 500;
+      setTimeout(() => {
+        // Simple base64 mock
+        const authString = btoa(`\0${nick}\0${password}`);
+        addMessageToRoom('Status', 'SYSTEM', `-> AUTHENTICATE ${authString.substring(0, 12)}...`, 'info');
+        addMessageToRoom('Status', 'SYSTEM', `<- 903 ${nick} :SASL authentication successful`, 'system');
+        addMessageToRoom('Status', 'SYSTEM', `-> CAP END`, 'info');
+      }, delay);
+
+      delay += 600;
+      setTimeout(() => {
+        const lowerNick = nick.trim().toLowerCase();
+        const isRegistered = registeredUsers.includes(lowerNick);
+
+        if (isRegistered) {
+          addMessageToRoom('Status', 'NickServ', `<- :NickServ!services@thaiirc.com PRIVMSG ${nick} :ล็อกอินเข้าสู่ระบบผ่าน SASL ด้วยชื่อเล่น ${nick} สำเร็จแล้ว (You are now identified for your nickname)`, 'info');
+        } else {
+          addMessageToRoom('Status', 'NickServ', `<- :NickServ!services@thaiirc.com PRIVMSG ${nick} :ชื่อเล่นของคุณยังไม่ได้ลงทะเบียน ระบบกำลังทำการลงทะเบียนบัญชีใหม่ด้วยอีเมล user@thaiirc.com โดยอัตโนมัติ...`, 'info');
+          
+          // Add to registered list
+          setRegisteredUsers(prev => [...prev, lowerNick]);
+          
+          setTimeout(() => {
+            addMessageToRoom('Status', 'NickServ', `<- :NickServ!services@thaiirc.com PRIVMSG ${nick} :ลงทะเบียนชื่อเล่น ${nick} ด้วยอีเมล user@thaiirc.com และเปิดใช้งานระบบรักษาความปลอดภัย SASL สำเร็จ! รหัสผ่านของท่านได้รับการบันทึกเรียบร้อยแล้ว`, 'info');
+          }, 400);
+        }
+      }, delay);
+    }
+
+    // 5. MOTD Retrieval
+    delay += 800;
     setTimeout(() => {
       // Create MOTD room tab dynamically
       setRooms((prev) => {
@@ -552,15 +631,23 @@ export default function IRCClientSim({
       });
 
       // Send MOTD messages into MOTD room
-      addMessageToRoom('MOTD', 'SYSTEM', `ต้อนรับเข้าระบบ (RPL_WELCOME 001): ยินดีต้อนรับเข้าสู่เครือข่าย IRC!`, 'motd');
+      addMessageToRoom('MOTD', 'SYSTEM', `ต้อนรับเข้าระบบ (RPL_WELCOME 001): ยินดีต้อนรับเข้าสู่เครือข่าย IRC! (Ident: ${sessionIdent})`, 'motd');
+      if (password) {
+        addMessageToRoom('MOTD', 'SYSTEM', `[AUTH] - ยืนยันตัวตนสำเร็จผ่านระบบความปลอดภัย SASL PLAIN`, 'motd');
+      }
+      if (useSSL) {
+        addMessageToRoom('MOTD', 'SYSTEM', `[SSL] - เชื่อมต่อแบบเข้ารหัสที่มีความปลอดภัยสูงด้วย SSL/TLS`, 'motd');
+      }
       addMessageToRoom('MOTD', 'SYSTEM', `[MOTD] - ยินดีต้อนรับสู่เซิร์ฟเวอร์ IRC จำลองความเสถียรสูง`, 'motd');
       addMessageToRoom('MOTD', 'SYSTEM', `[MOTD] - พัฒนาจำลองขึ้นมาเพื่อให้ทดสอบ UI pIRCH และช่วยทำโค้ด PyQt6 ติดตั้งได้สะดวก`, 'motd');
       addMessageToRoom('MOTD', 'SYSTEM', `[MOTD] - เธรดเครือข่ายถูกแยกไว้ในคลาส IRCWorker เรียบร้อยแล้ว`, 'motd');
 
       // Notify user in Status room
       addMessageToRoom('Status', 'SYSTEM', `ได้รับ Message of the Day (MOTD) เรียบร้อยแล้ว (เปิดดูได้ที่แท็บ MOTD ด้านบน)`, 'system');
-    }, 2200);
+    }, delay);
 
+    // 6. Online established
+    delay += 600;
     setTimeout(() => {
       setIsConnecting(false);
       setIsConnected(true);
@@ -568,7 +655,7 @@ export default function IRCClientSim({
       
       // Create and switch to target channel
       joinChannel(targetChannel);
-    }, 2800);
+    }, delay);
   };
 
   const joinChannel = (chanName: string) => {
@@ -922,6 +1009,43 @@ export default function IRCClientSim({
                 : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
             }`}
           />
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Password:</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isConnected || isConnecting}
+            placeholder="SASL Pass"
+            className={`px-2.5 py-1 w-[90px] text-xs outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
+              isDarkMode
+                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+            }`}
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 select-none">
+          <label className="flex items-center gap-1 cursor-pointer text-xs font-semibold">
+            <input
+              type="checkbox"
+              checked={useSSL}
+              disabled={isConnected || isConnecting}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setUseSSL(checked);
+                if (checked && port === '6667') {
+                  setPort('6697');
+                } else if (!checked && port === '6697') {
+                  setPort('6667');
+                }
+              }}
+              className="accent-indigo-600 cursor-pointer"
+            />
+            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>SSL</span>
+          </label>
         </div>
 
         <div className="ml-auto flex items-center gap-2">

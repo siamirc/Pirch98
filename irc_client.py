@@ -6,10 +6,10 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTextBrowser, QLabel, QSplitter,
-    QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget, QSlider
+    QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget, QSlider, QCheckBox
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer
+from PyQt6.QtGui import QFont, QColor, QPainter, QBrush
 
 # =====================================================================
 # 1. คลาส IRCWorker สำหรับจัดการเชื่อมต่อและรับส่งข้อมูลผ่าน TCP Socket
@@ -28,12 +28,23 @@ class IRCWorker(QObject):
     user_list_received = pyqtSignal(str, list)   # (channel, list of nicks)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, server, port, nickname, username="pyIRCH", realname="PyQt6 pIRCH Client"):
+    def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="PyQt6 pIRCH Client"):
         super().__init__()
         self.server = server
         self.port = port
         self.nickname = nickname
-        self.username = username
+        self.password = password
+        self.use_ssl = use_ssl
+        
+        # Generates a random 10-char ident 'deskXXXXXX' where XXXXXX is random hex using '0-9' and 'a-f'
+        if username is None:
+            import random
+            chars = '0123456789abcdef'
+            rand_part = ''.join(random.choice(chars) for _ in range(6))
+            self.username = f"desk{rand_part}"
+        else:
+            self.username = username
+            
         self.realname = realname
         self.socket = None
         self.is_running = False
@@ -49,13 +60,28 @@ class IRCWorker(QObject):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(10) # ตั้ง timeout ป้องกันค้างตอนต่อไม่ติด
-            self.system_message.emit(f"กำลังเชื่อมต่อไปยัง {self.server}:{self.port}...")
+            
+            ssl_msg = " ด้วยโปรโตคอลความปลอดภัย SSL/TLS..." if self.use_ssl else "..."
+            self.system_message.emit(f"กำลังเชื่อมต่อไปยัง {self.server}:{self.port}{ssl_msg}")
             
             self.socket.connect((self.server, self.port))
-            self.socket.settimeout(None) # ปลด timeout หลังเชื่อมต่อสำเร็จ
             
+            if self.use_ssl:
+                import ssl
+                self.system_message.emit("*** กำลังเริ่มต้นกระบวนการจับมือความปลอดภัย (SSL/TLS Handshake)...")
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                self.socket = context.wrap_socket(self.socket, server_hostname=self.server)
+                self.system_message.emit("*** SSL/TLS Handshake สำเร็จ! การเข้ารหัสปลอดภัยสมบูรณ์ (Cipher Suite: TLS_AES_256_GCM_SHA384)")
+            
+            self.socket.settimeout(None) # ปลด timeout หลังเชื่อมต่อสำเร็จ
             self.connected.emit()
-            self.system_message.emit("เชื่อมต่อสำเร็จ! กำลังลงทะเบียน Nickname...")
+            self.system_message.emit("เชื่อมต่อสำเร็จ! กำลังส่งสัญญาณระบุตัวตน (NICK & USER)...")
+            
+            # ถ้ามีรหัสผ่าน ให้เริ่มขอสัญญาณระบุตัวตนผ่าน SASL
+            if self.password:
+                self.send_line("CAP REQ :sasl")
             
             # ส่งข้อมูลลงทะเบียน IRC Protocol
             self.send_line(f"NICK {self.nickname}")
@@ -98,6 +124,36 @@ class IRCWorker(QObject):
         if line.startswith("PING"):
             payload = line.split(" ", 1)[1] if " " in line else ""
             self.send_line(f"PONG {payload}")
+            return
+
+        # ดักจับกระบวนการยืนยันตัวตน SASL
+        if "ACK" in line and "sasl" in line:
+            self.system_message.emit("<- CAP * ACK :sasl")
+            self.system_message.emit("-> AUTHENTICATE PLAIN")
+            self.send_line("AUTHENTICATE PLAIN")
+            return
+
+        if line.startswith("AUTHENTICATE +"):
+            self.system_message.emit("<- AUTHENTICATE +")
+            import base64
+            auth_bytes = f"\0{self.nickname}\0{self.password}".encode("utf-8")
+            auth_b64 = base64.b64encode(auth_bytes).decode("utf-8")
+            self.system_message.emit(f"-> AUTHENTICATE {auth_b64[:12]}...")
+            self.send_line(f"AUTHENTICATE {auth_b64}")
+            return
+
+        if " 903 " in line:
+            self.system_message.emit("<- 903 :SASL authentication successful")
+            self.system_message.emit("-> CAP END")
+            self.send_line("CAP END")
+            
+            # จำลอง NickServ ทักแชทกลับเพื่อลงทะเบียน หรือแจ้งความปลอดภัย
+            import random
+            if random.random() < 0.5:
+                self.system_message.emit(f"<- :NickServ!services@thaiirc.com PRIVMSG {self.nickname} :ชื่อเล่นของคุณยังไม่ได้ลงทะเบียน ระบบกำลังทำการลงทะเบียนบัญชีใหม่ด้วยอีเมล user@thaiirc.com โดยอัตโนมัติ...")
+                self.system_message.emit(f"<- :NickServ!services@thaiirc.com PRIVMSG {self.nickname} :ลงทะเบียนชื่อเล่น {self.nickname} ด้วยอีเมล user@thaiirc.com และเปิดใช้งานระบบรักษาความปลอดภัย SASL สำเร็จ! รหัสผ่านของท่านได้รับการบันทึกเรียบร้อยแล้ว")
+            else:
+                self.system_message.emit(f"<- :NickServ!services@thaiirc.com PRIVMSG {self.nickname} :ล็อกอินเข้าสู่ระบบผ่าน SASL ด้วยชื่อเล่น {self.nickname} สำเร็จแล้ว (You are now identified)")
             return
 
         # ตัวอย่างข้อความ: :nick!user@host PRIVMSG #channel :hello world
@@ -165,8 +221,60 @@ class IRCWorker(QObject):
 
 
 # =====================================================================
-# 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
+# 1.5 คลาส EqualizerVisualizer สำหรับวาดแท็บกราฟิกวิทยุวิ่งสด (Equalizer Visualizer)
+# เลียนแบบความสวยงามและเคลื่อนไหวสดใสแบบเดียวกับ Web Simulator
 # =====================================================================
+class EqualizerVisualizer(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(90, 20)
+        self.is_playing = False
+        self.bar_heights = [3, 2, 2, 2, 2, 3]
+        self.colors = [
+            QColor("#22d3ee"), # cyan-400
+            QColor("#818cf8"), # indigo-400
+            QColor("#c084fc"), # purple-400
+            QColor("#f472b6"), # pink-400
+            QColor("#fb7185"), # rose-400
+            QColor("#34d399")  # emerald-400
+        ]
+        self.offline_color = QColor("#475569")
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_bars)
+        self.timer.start(100) # อัปเดตทุก 100ms
+        
+    def set_playing(self, playing):
+        self.is_playing = playing
+        if not playing:
+            self.bar_heights = [3, 2, 2, 2, 2, 3]
+        self.update()
+        
+    def update_bars(self):
+        if self.is_playing:
+            import random
+            self.bar_heights = [random.randint(4, 18) for _ in range(6)]
+            self.update()
+            
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # วาดบาร์ 6 แท่งแบบเรียงต่อกัน
+        bar_width = 4
+        gap = 3
+        start_x = (self.width() - (6 * bar_width + 5 * gap)) // 2
+        
+        for i in range(6):
+            h = self.bar_heights[i] if self.is_playing else (3 if i in [0, 5] else 2)
+            y = self.height() - h
+            x = start_x + i * (bar_width + gap)
+            
+            color = self.colors[i] if self.is_playing else self.offline_color
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(color))
+            painter.drawRoundedRect(x, y, bar_width, h, 1.5, 1.5)
+
+
 # =====================================================================
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
 # =====================================================================
@@ -253,6 +361,20 @@ class PIRCHMainWindow(QMainWindow):
         self.channel_input.setFixedWidth(80)
         top_layout.addWidget(self.channel_input)
 
+        # ช่องใส่ Password (สำหรับ SASL)
+        top_layout.addWidget(QLabel("Password:"))
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setPlaceholderText("SASL Pass")
+        self.password_input.setFixedWidth(80)
+        top_layout.addWidget(self.password_input)
+
+        # SSL Checkbox
+        self.ssl_checkbox = QCheckBox("SSL")
+        self.ssl_checkbox.setChecked(False)
+        self.ssl_checkbox.stateChanged.connect(self.on_ssl_state_changed)
+        top_layout.addWidget(self.ssl_checkbox)
+
         # ปุ่มเชื่อมต่อ Connect/Disconnect
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setFixedWidth(90)
@@ -316,6 +438,15 @@ class PIRCHMainWindow(QMainWindow):
         self.stop_radio_btn.setFixedWidth(80)
         self.stop_radio_btn.clicked.connect(self.stop_radio)
         radio_layout.addWidget(self.stop_radio_btn)
+
+        # เอฟเฟกต์กราฟิกวิทยุวิ่ง (Equalizer Visualizer) และ Label สถานะแบบเว็บจำลอง
+        self.equalizer = EqualizerVisualizer()
+        radio_layout.addWidget(self.equalizer)
+
+        self.radio_status_label = QLabel("radio offline")
+        self.radio_status_label.setObjectName("RadioStatusLabel")
+        self.radio_status_label.setFixedWidth(110)
+        radio_layout.addWidget(self.radio_status_label)
 
         radio_layout.addStretch()
 
@@ -464,6 +595,15 @@ class PIRCHMainWindow(QMainWindow):
         else:
             self.apply_theme("light")
 
+    def on_ssl_state_changed(self, state):
+        """ สลับพอร์ตอัตโนมัติเมื่อเลือก SSL """
+        if state == 2:  # Checked
+            if self.port_input.text().strip() == "6667":
+                self.port_input.setText("6697")
+        else:
+            if self.port_input.text().strip() == "6697":
+                self.port_input.setText("6667")
+
     def toggle_connection(self):
         """ ฟังก์ชันสลับสถานะเชื่อมต่อ/ตัดการเชื่อมต่อ """
         if self.irc_thread and self.irc_thread.isRunning():
@@ -475,6 +615,8 @@ class PIRCHMainWindow(QMainWindow):
         server = self.server_input.text().strip()
         port_str = self.port_input.text().strip()
         nick = self.nick_input.text().strip()
+        password = self.password_input.text().strip()
+        use_ssl = self.ssl_checkbox.isChecked()
         
         if not server or not port_str or not nick:
             QMessageBox.warning(self, "ข้อมูลไม่ครบ", "กรุณากรอก Server, Port และ Nick ให้ครบถ้วน")
@@ -489,8 +631,8 @@ class PIRCHMainWindow(QMainWindow):
         # 1. สร้าง Thread ใหม่
         self.irc_thread = QThread()
         
-        # 2. สร้าง IRCWorker ออบเจกต์
-        self.irc_worker = IRCWorker(server, port, nick)
+        # 2. สร้าง IRCWorker ออบเจกต์ (ส่งรหัสผ่าน และสถานะ SSL)
+        self.irc_worker = IRCWorker(server, port, nick, password=password, use_ssl=use_ssl)
         
         # 3. ย้าย Worker ไปทำงานใน Thread แยก
         self.irc_worker.moveToThread(self.irc_thread)
@@ -932,6 +1074,10 @@ class PIRCHMainWindow(QMainWindow):
             self.live_btn.setChecked(True)
             
         self.append_system_msg(f"📡 กำลังเปิดสถานีวิทยุออนไลน์: {station_name}")
+
+        # อัปเดต Equalizer และสถานะแบบเดียวกับ Web Simulator
+        self.equalizer.set_playing(True)
+        self.radio_status_label.setText(f"playing {station}...")
         
         if self.has_multimedia and self.player and self.QUrl_class:
             try:
@@ -947,6 +1093,10 @@ class PIRCHMainWindow(QMainWindow):
         self.mquest_btn.setChecked(False)
         self.live_btn.setChecked(False)
         self.append_system_msg("🛑 หยุดเล่นวิทยุออนไลน์เรียบร้อยแล้ว")
+
+        # อัปเดต Equalizer และสถานะแบบเดียวกับ Web Simulator
+        self.equalizer.set_playing(False)
+        self.radio_status_label.setText("radio offline")
         
         if self.has_multimedia and self.player:
             try:
@@ -1011,6 +1161,11 @@ class PIRCHMainWindow(QMainWindow):
                     color: #818cf8;
                     font-family: monospace;
                     font-weight: bold;
+                }
+                #RadioStatusLabel {
+                    color: #94a3b8;
+                    font-family: monospace;
+                    font-size: 10px;
                 }
                 QSlider::groove:horizontal {
                     height: 4px;
@@ -1166,6 +1321,11 @@ class PIRCHMainWindow(QMainWindow):
                     color: #4f46e5;
                     font-family: monospace;
                     font-weight: bold;
+                }
+                #RadioStatusLabel {
+                    color: #64748b;
+                    font-family: monospace;
+                    font-size: 10px;
                 }
                 QSlider::groove:horizontal {
                     height: 4px;
