@@ -126,12 +126,20 @@ class IRCWorker(QObject):
                 reason = parts[1].lstrip(":") if len(parts) > 1 else "Kicked"
                 self.user_kicked.emit(channel, kicked_nick, sender_nick, reason)
             elif command == "353": # รหัสแสดงรายชื่อผู้ใช้ในห้อง (RPL_NAMREPLY)
-                # รูปแบบ: :server 353 nick = #channel :nick1 nick2 nick3...
+                # รูปแบบทั่วไป: :server 353 nick = #channel :nick1 nick2 nick3... (หรืออาจเป็น @ หรือ *)
                 try:
-                    chan_part = line.split(" = ")[1]
-                    channel = chan_part.split(" :")[0]
-                    users = chan_part.split(" :")[1].strip().split(" ")
-                    self.user_list_received.emit(channel, users)
+                    # แยกส่วนผู้ใช้ออกมาด้วย " :" แรกที่อยู่หลังตัวระบุคำสั่ง 353
+                    parts = line.split(" :", 1)
+                    if len(parts) == 2:
+                        user_list_str = parts[1]
+                        users = user_list_str.strip().split(" ")
+                        
+                        # แยกหาชื่อช่องแคบจากฝั่งซ้าย (ตัวสุดท้ายก่อนเครื่องหมายแยก)
+                        left_part = parts[0].strip()
+                        left_words = left_part.split(" ")
+                        channel = left_words[-1]
+                        
+                        self.user_list_received.emit(channel, users)
                 except Exception:
                     pass
             elif command in ["372", "375", "376"]: # ข้อความ MOTD (Message of the Day)
@@ -326,10 +334,11 @@ class PIRCHMainWindow(QMainWindow):
         
         user_list = QListWidget()
         user_list.setObjectName("UserList")
-        user_list.setFixedWidth(160)
         splitter.addWidget(user_list)
         
-        splitter.setSizes([610, 160])
+        splitter.setSizes([640, 160])
+        splitter.setStretchFactor(0, 80)
+        splitter.setStretchFactor(1, 20)
         chan_layout.addWidget(splitter)
         
         self.tab_widget.addTab(chan_widget, channel)
@@ -664,11 +673,14 @@ class PIRCHMainWindow(QMainWindow):
         # ตั้งค่าฟอนต์ใหม่ทั้งหมดในหน้าต่างแสดงผล
         font = QFont("Segoe UI", current_size)
         self.status_display.setFont(font)
+        self.status_display.document().setDefaultFont(font)
         self.motd_display.setFont(font)
+        self.motd_display.document().setDefaultFont(font)
         
         # นำฟอนต์ไปใช้กับห้องทั้งหมด
         for r in self.rooms.values():
             r["chat_display"].setFont(font)
+            r["chat_display"].document().setDefaultFont(font)
             r["user_list"].setFont(font)
 
     def change_font_size(self):
@@ -823,7 +835,6 @@ class PIRCHMainWindow(QMainWindow):
                     border: none;
                     border-radius: 12px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
-                    font-size: 12px;
                     color: #f1f5f9;
                     padding: 12px;
                 }
@@ -832,7 +843,6 @@ class PIRCHMainWindow(QMainWindow):
                     border: none;
                     border-radius: 12px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
-                    font-size: 11px;
                     color: #cbd5e1;
                     padding: 6px;
                 }
@@ -939,7 +949,6 @@ class PIRCHMainWindow(QMainWindow):
                     border: none;
                     border-radius: 12px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
-                    font-size: 12px;
                     color: #1e293b;
                     padding: 12px;
                 }
@@ -948,7 +957,6 @@ class PIRCHMainWindow(QMainWindow):
                     border: none;
                     border-radius: 12px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
-                    font-size: 11px;
                     color: #334155;
                     padding: 6px;
                 }

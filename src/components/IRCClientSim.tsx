@@ -430,22 +430,28 @@ export default function IRCClientSim({
         const oldNick = nick;
         setNick(args);
         
-        // Log nick change in all rooms
-        Object.keys(rooms).forEach((r) => {
-          addMessageToRoom(r, 'SYSTEM', `*** ${oldNick} เปลี่ยนชื่อเป็น ${args}`, 'system');
-          // Update users list in rooms
-          setRooms((prev) => {
-            const currentRoomObj = prev[r];
-            if (!currentRoomObj) return prev;
-            return {
-              ...prev,
-              [r]: {
-                ...currentRoomObj,
-                // Replace matching user in room (using cleanNick comparison)
-                users: currentRoomObj.users.map((u) => (cleanNick(u) === cleanNick(oldNick) ? u.replace(cleanNick(oldNick), args) : u)),
-              },
-            };
+        // Single atomic state update to prevent batching race conditions
+        setRooms((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((r) => {
+            const roomObj = next[r];
+            if (roomObj) {
+              const newMessage: IRCMessage = {
+                id: `nickchange-${r}-${Date.now()}-${Math.random()}`,
+                timestamp: new Date().toLocaleTimeString(),
+                sender: 'SYSTEM',
+                text: `*** ${oldNick} เปลี่ยนชื่อเป็น ${args}`,
+                type: 'system',
+              };
+              next[r] = {
+                ...roomObj,
+                users: roomObj.users.map((u) => (cleanNick(u) === cleanNick(oldNick) ? u.replace(cleanNick(oldNick), args) : u)),
+                messages: [...roomObj.messages, newMessage],
+                unreadCount: r !== currentRoom ? roomObj.unreadCount + 1 : 0,
+              };
+            }
           });
+          return next;
         });
       } else if (command === 'PART' || command === 'LEAVE') {
         if (currentRoom === 'Status') {
@@ -789,42 +795,78 @@ export default function IRCClientSim({
       </div>
 
       {/* 4. Chat Workspace & Nick List Panel (Split View) */}
-      <div className={`flex-1 min-h-0 flex gap-2 p-2 transition-colors ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
+      <div className={`flex-1 min-h-0 flex gap-3 p-3 transition-colors ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
         {/* Chat window with dynamic font sizing */}
-        <div className={`flex-1 min-h-0 border rounded-lg p-3.5 overflow-y-auto flex flex-col gap-1.5 font-mono leading-relaxed shadow-inner select-text transition-all ${
-          fontSize === 'sm' ? 'text-[11px]' : fontSize === 'lg' ? 'text-[16px]' : 'text-[13px]'
-        } ${
-          isDarkMode ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-200/80 text-slate-800'
-        }`}>
-          {activeRoomData.messages.map((msg) => (
-            <div key={msg.id} className={`flex gap-2 items-start py-0.5 rounded px-1 transition-colors ${
-              isDarkMode ? 'hover:bg-slate-900/40' : 'hover:bg-slate-50/50'
-            }`}>
-              <span className={`select-none text-[11px] pt-0.5 font-sans font-medium transition-colors ${
-                isDarkMode ? 'text-slate-600' : 'text-slate-400'
-              }`}>[{msg.timestamp}]</span>
-              <div className="flex-1">
-                {msg.type === 'user' ? (
-                  <span>
-                    <strong className={`font-bold mr-1.5 transition-colors ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>&lt;{msg.sender}&gt;</strong>
-                    <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{msg.text}</span>
-                  </span>
-                ) : (
-                  <span className={getMessageColorClass(msg.type)}>
-                    {msg.text}
-                  </span>
-                )}
+        <div 
+          style={{ fontSize: fontSize === 'sm' ? '11px' : fontSize === 'lg' ? '16px' : '13px' }}
+          className={`min-h-0 border rounded-xl p-3 overflow-y-auto flex flex-col gap-1 shadow-inner select-text transition-all ${
+            currentRoom.startsWith('#') ? 'w-[80%]' : 'w-full'
+          } ${
+            isDarkMode ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-200/80 text-slate-800'
+          }`}
+        >
+          {activeRoomData.messages.map((msg) => {
+            const isUserMsg = msg.type === 'user';
+            return (
+              <div 
+                key={msg.id} 
+                className={`flex gap-3 items-start py-1 rounded px-2 hover:bg-slate-500/5 dark:hover:bg-slate-400/5 transition-colors`}
+              >
+                {/* 1. Time Column */}
+                <span className={`select-none font-sans font-medium text-right w-11 shrink-0 select-none text-[10px] self-center transition-colors ${
+                  isDarkMode ? 'text-slate-600' : 'text-slate-400'
+                }`}>
+                  {msg.timestamp.substring(0, 5) || msg.timestamp}
+                </span>
+
+                {/* 2. Vertical Column Divider */}
+                <div className={`w-[1px] h-3.5 self-center shrink-0 transition-colors ${
+                  isDarkMode ? 'bg-slate-800' : 'bg-slate-200/80'
+                }`} />
+
+                {/* 3. Sender / Icon Column */}
+                <div className="w-24 shrink-0 text-right pr-1 select-none font-bold truncate">
+                  {isUserMsg ? (
+                    <span className={isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}>
+                      {msg.sender}
+                    </span>
+                  ) : (
+                    <span className={`text-center font-sans font-bold text-xs ${
+                      msg.type === 'join' ? 'text-emerald-500' : 
+                      msg.type === 'part' ? 'text-amber-500' : 
+                      msg.type === 'error' ? 'text-rose-500' : 'text-slate-400'
+                    }`}>
+                      {msg.type === 'join' ? '➔' : msg.type === 'part' ? '🚪' : msg.type === 'error' ? '❌' : '•'}
+                    </span>
+                  )}
+                </div>
+
+                {/* 4. Text Content Column with Indentation Alignment */}
+                <div className="flex-1 text-left break-words">
+                  {isUserMsg ? (
+                    <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                      {msg.text}
+                    </span>
+                  ) : (
+                    <span className={`font-sans italic ${getMessageColorClass(msg.type)}`}>
+                      {msg.text}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={chatEndRef} />
         </div>
 
         {/* User list pane */}
-        {currentRoom !== 'Status' && (
-          <div className={`w-[150px] border rounded-lg p-2 overflow-y-auto flex flex-col select-none shadow-inner transition-colors ${
-            isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200/80'
-          }`}>
+        {currentRoom.startsWith('#') && (
+          <div 
+            style={{ fontSize: fontSize === 'sm' ? '10px' : fontSize === 'lg' ? '14px' : '11px' }}
+            className={`w-[20%] border rounded-xl p-3 overflow-y-auto flex flex-col select-none shadow-inner transition-colors ${
+              isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200/80'
+            }`}
+          >
             <div className={`flex items-center gap-1.5 border-b pb-2 mb-2 px-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               isDarkMode ? 'border-slate-900 text-slate-500' : 'border-slate-100 text-slate-400'
             }`}>
@@ -866,8 +908,6 @@ export default function IRCClientSim({
                     <div
                        key={username}
                        className={`px-2 py-1 rounded-md flex items-center justify-between font-sans transition-colors ${
-                         fontSize === 'sm' ? 'text-[10px]' : fontSize === 'lg' ? 'text-[14px]' : 'text-xs'
-                       } ${
                          isMe
                            ? isDarkMode
                              ? 'bg-indigo-950/60 text-indigo-300 font-bold'
@@ -881,7 +921,7 @@ export default function IRCClientSim({
                         {hasPrefix ? `${prefixChar}${displayNick}` : (isOp ? `@${displayNick}` : isVoice ? `+${displayNick}` : displayNick)}
                       </span>
                       {isOp ? (
-                        <span className={`text-[9px] font-bold px-1 py-0.2 rounded scale-95 shadow-sm ${
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded scale-90 shadow-sm ${
                           isDarkMode
                             ? 'text-rose-400 bg-rose-950/30 border border-rose-900/50'
                             : 'text-rose-600 bg-rose-50 border border-rose-100'
@@ -889,7 +929,7 @@ export default function IRCClientSim({
                           OP
                         </span>
                       ) : isVoice ? (
-                        <span className={`text-[9px] font-bold px-1 py-0.2 rounded scale-95 shadow-sm ${
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded scale-90 shadow-sm ${
                           isDarkMode
                             ? 'text-amber-400 bg-amber-950/30 border border-amber-900/50'
                             : 'text-amber-600 bg-amber-50 border border-amber-100'
