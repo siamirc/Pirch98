@@ -2,6 +2,7 @@ export const pythonCodeString = `import sys
 import socket
 import re
 import threading
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTextBrowser, QLabel, QSplitter,
@@ -480,9 +481,13 @@ class PIRCHMainWindow(QMainWindow):
 
     def append_system_msg(self, text):
         """ เพิ่มข้อความระบบลงหน้าจอ Status หรือข่าวสาร MOTD """
+        current_time = datetime.now().strftime("%H:%M")
+        time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
+        
         # หากตรวจพบคีย์เวิร์ด MOTD ให้นำข่าวสารไปลงในแท็บ MOTD
         if "[MOTD]" in text or "MOTD" in text:
-            self.motd_display.append(f"<span style='color: #800080;'>• {text}</span>")
+            msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: #800080;'>• {text}</span></div>"
+            self.motd_display.append(msg_html)
             return
 
         # เพิ่มลงในแท็บปัจจุบันที่เปิดอยู่
@@ -491,7 +496,7 @@ class PIRCHMainWindow(QMainWindow):
         current_text_clean = current_text.split(" (")[0]
         
         text_color = "#0891b2" if self.current_theme == "light" else "#38bdf8"
-        msg_html = f"<span style='color: {text_color};'>• {text}</span>"
+        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color};'>• {text}</span></div>"
         
         if current_text_clean.lower() in self.rooms:
             self.rooms[current_text_clean.lower()]["chat_display"].append(msg_html)
@@ -502,11 +507,13 @@ class PIRCHMainWindow(QMainWindow):
 
     def on_message_received(self, target, nick, message):
         """ เมื่อได้รับข้อความแชท """
+        current_time = datetime.now().strftime("%H:%M")
+        time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         is_me = nick == self.nick_input.text().strip()
         nick_color = "#4f46e5" if is_me else "#059669"
+        text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
         
-        text_color = "#0f172a" if self.current_theme == "light" else "#f1f5f9"
-        msg_html = f"<div style='margin: 3px 0;'><b>&lt;<span style='color: {nick_color};'>{nick}</span>&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
+        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
         
         target_key = target.lower()
         if target_key in self.rooms:
@@ -518,7 +525,7 @@ class PIRCHMainWindow(QMainWindow):
                 room["chat_display"].append(msg_html)
             else:
                 # กรณีเป็นข้อความกระซิบเดี่ยว (Private Message) ให้แสดงไว้ที่ห้อง Status พร้อมข้อความระบุชัดเจน
-                self.status_display.append(f"<div style='margin: 3px 0;'><b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{message}</span></div>")
+                self.status_display.append(f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{message}</span></div>")
 
     def clean_nick(self, nick):
         """ ล้างค่าสัญลักษณ์หน้าชื่อผู้ใช้งาน เช่น @, +, %, & และ ~ """
@@ -565,8 +572,12 @@ class PIRCHMainWindow(QMainWindow):
         """ มีคนอื่น หรือตัวเราเอง Join เข้ามาในห้องแชท """
         room = self.get_or_create_channel_tab(channel)
         
+        current_time = datetime.now().strftime("%H:%M")
+        time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         text_color = "#059669" if self.current_theme == "light" else "#10b981"
-        room["chat_display"].append(f"<span style='color: {text_color}; font-weight: bold;'>✔ {nick} ได้เข้าสู่ห้อง {channel}</span>")
+        
+        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color}; font-weight: bold;'>✔ {nick} ได้เข้าสู่ห้อง {channel}</span></div>"
+        room["chat_display"].append(msg_html)
         
         if nick == self.nick_input.text().strip():
             self.current_channel = channel
@@ -580,8 +591,12 @@ class PIRCHMainWindow(QMainWindow):
             chan_key = channel.lower()
             if chan_key in self.rooms:
                 room = self.rooms[chan_key]
+                current_time = datetime.now().strftime("%H:%M")
+                time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
                 text_color = "#94a3b8" if self.current_theme == "light" else "#64748b"
-                room["chat_display"].append(f"<span style='color: {text_color};'>🚪 {nick} ได้ออกจากห้อง {channel}</span>")
+                
+                msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color};'>🚪 {nick} ได้ออกจากห้อง {channel}</span></div>"
+                room["chat_display"].append(msg_html)
                 
                 # หากตัวเราออกจากช่องเอง ให้ทำการปิดแท็บ
                 if nick == self.nick_input.text().strip():
@@ -599,8 +614,12 @@ class PIRCHMainWindow(QMainWindow):
         chan_key = channel.lower()
         if chan_key in self.rooms:
             room = self.rooms[chan_key]
+            current_time = datetime.now().strftime("%H:%M")
+            time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
             text_color = "#ef4444" if self.current_theme == "light" else "#f87171"
-            room["chat_display"].append(f"<span style='color: {text_color}; font-weight: bold;'>❌ {kicked_nick} ถูกเตะออกจากห้อง {channel} โดย {kicker_nick} ({reason})</span>")
+            
+            msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color}; font-weight: bold;'>❌ {kicked_nick} ถูกเตะออกจากห้อง {channel} โดย {kicker_nick} ({reason})</span></div>"
+            room["chat_display"].append(msg_html)
             
             # หากเป็นตัวเราเองโดนเตะ ให้ปิดแท็บห้องแชทนั้น
             if kicked_nick == self.nick_input.text().strip():
