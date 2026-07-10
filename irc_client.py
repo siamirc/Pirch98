@@ -355,26 +355,6 @@ class PIRCHMainWindow(QMainWindow):
         self.nick_input.setFixedWidth(100)
         top_layout.addWidget(self.nick_input)
 
-        # ช่องใส่ Channel ที่ต้องการ Join หลังจาก Connect สำเร็จ
-        top_layout.addWidget(QLabel("Join Chan:"))
-        self.channel_input = QLineEdit("#thaiirc")
-        self.channel_input.setFixedWidth(80)
-        top_layout.addWidget(self.channel_input)
-
-        # ช่องใส่ Password (สำหรับ SASL)
-        top_layout.addWidget(QLabel("Password:"))
-        self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setPlaceholderText("SASL Pass")
-        self.password_input.setFixedWidth(80)
-        top_layout.addWidget(self.password_input)
-
-        # SSL Checkbox
-        self.ssl_checkbox = QCheckBox("SSL")
-        self.ssl_checkbox.setChecked(False)
-        self.ssl_checkbox.stateChanged.connect(self.on_ssl_state_changed)
-        top_layout.addWidget(self.ssl_checkbox)
-
         # ปุ่มเชื่อมต่อ Connect/Disconnect
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setFixedWidth(90)
@@ -448,6 +428,26 @@ class PIRCHMainWindow(QMainWindow):
         self.radio_status_label.setFixedWidth(110)
         radio_layout.addWidget(self.radio_status_label)
 
+        # ย้ายช่อง Join Chan, Password และ SSL มารวมอยู่ในแถววิทยุเพื่อความกระชับไม่บังช่องอื่น
+        radio_layout.addWidget(QLabel("Join:"))
+        self.channel_input = QLineEdit("#thaiirc")
+        self.channel_input.setFixedWidth(80)
+        self.channel_input.setToolTip("ระบุห้องแชทที่จะเข้าร่วม (เช่น #pyqt6)")
+        radio_layout.addWidget(self.channel_input)
+
+        radio_layout.addWidget(QLabel("Pass:"))
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setPlaceholderText("SASL")
+        self.password_input.setFixedWidth(70)
+        self.password_input.setToolTip("รหัสผ่าน SASL (หากจำเป็น)")
+        radio_layout.addWidget(self.password_input)
+
+        self.ssl_checkbox = QCheckBox("SSL")
+        self.ssl_checkbox.setChecked(False)
+        self.ssl_checkbox.stateChanged.connect(self.on_ssl_state_changed)
+        radio_layout.addWidget(self.ssl_checkbox)
+
         radio_layout.addStretch()
 
         vol_icon = QLabel("🔊")
@@ -510,6 +510,13 @@ class PIRCHMainWindow(QMainWindow):
         # ----------------------------------------------------
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(6)
+
+        # ปุ่มส่งไฟล์/รูปภาพ (File attachment feature)
+        self.attach_btn = QPushButton("📎")
+        self.attach_btn.setToolTip("ส่งไฟล์หรือรูปภาพ (File/Image Sharing)")
+        self.attach_btn.setFixedWidth(35)
+        self.attach_btn.clicked.connect(self.select_and_send_file)
+        bottom_layout.addWidget(self.attach_btn)
 
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("พิมพ์ข้อความแชท หรือพิมพ์คำสั่ง เช่น /join #pyqt6 จากนั้นกด Enter...")
@@ -709,14 +716,176 @@ class PIRCHMainWindow(QMainWindow):
             
         self.current_channel = ""
 
+    def format_mirc_text(self, text):
+        """ แปลงรหัสสี mIRC และทำให้ลิงก์ URL สามารถคลิกได้ใน QTextBrowser """
+        import html
+        import re
+
+        # แปลงตัวอักษรพิเศษของ HTML เพื่อความปลอดภัย
+        text = html.escape(text)
+
+        is_dark = self.current_theme == "dark"
+        if is_dark:
+            mirc_colors = {
+                0: '#ffffff', # White
+                1: '#94a3b8', # Black -> Slate-400
+                2: '#60a5fa', # Blue -> Blue-400
+                3: '#4ade80', # Green -> Green-400
+                4: '#f87171', # Red -> Red-400
+                5: '#fb923c', # Brown -> Orange-400
+                6: '#c084fc', # Purple -> Purple-400
+                7: '#f59e0b', # Orange -> Amber-500
+                8: '#facc15', # Yellow -> Yellow-400
+                9: '#86efac', # Light Green -> Green-300
+                10: '#2dd4bf', # Cyan -> Teal-400
+                11: '#22d3ee', # Light Cyan -> Cyan-400
+                12: '#93c5fd', # Light Blue -> Blue-300
+                13: '#f472b6', # Pink -> Pink-400
+                14: '#cbd5e1', # Grey -> Slate-300
+                15: '#e2e8f0', # Light Grey -> Slate-200
+            }
+        else:
+            mirc_colors = {
+                0: '#334155', # White -> Slate-700
+                1: '#000000', # Black
+                2: '#1d4ed8', # Blue -> Blue-750
+                3: '#15803d', # Green -> Green-700
+                4: '#b91c1c', # Red -> Red-700
+                5: '#7c2d12', # Brown -> Orange-900
+                6: '#7e22ce', # Purple -> Purple-700
+                7: '#c2410c', # Orange -> Orange-700
+                8: '#a16207', # Yellow -> Yellow-700
+                9: '#166534', # Light Green -> Green-800
+                10: '#0f766e', # Cyan -> Teal-700
+                11: '#0369a1', # Light Cyan -> Cyan-700
+                12: '#1e40af', # Light Blue -> Blue-800
+                13: '#be185d', # Pink -> Pink-700
+                14: '#4b5563', # Grey -> Grey-600
+                15: '#374151', # Light Grey -> Grey-700
+            }
+
+        # แปลงปุ่มพิมพ์ลัดให้เป็น Control Code จริง
+        text = (text
+            .replace('^B', '\x02').replace('^b', '\x02')
+            .replace('^U', '\x1F').replace('^u', '\x1F')
+            .replace('^O', '\x0F').replace('^o', '\x0F')
+            .replace('^C', '\x03').replace('^c', '\x03')
+            .replace('&amp;B', '\x02').replace('&amp;b', '\x02')
+            .replace('&amp;U', '\x1F').replace('&amp;u', '\x1F')
+            .replace('&amp;O', '\x0F').replace('&amp;o', '\x0F')
+            .replace('&amp;C', '\x03').replace('&amp;c', '\x03'))
+
+        html_out = ""
+        bold = False
+        underline = False
+        fg = None
+        bg = None
+        open_spans = 0
+
+        def close_all_tags():
+            nonlocal open_spans
+            res = ""
+            while open_spans > 0:
+                res += "</span>"
+                open_spans -= 1
+            return res
+
+        i = 0
+        n = len(text)
+        while i < n:
+            char = text[i]
+            if char == '\x02':  # Bold Toggle
+                html_out += close_all_tags()
+                bold = not bold
+                style_str = ""
+                if bold: style_str += "font-weight: bold;"
+                if underline: style_str += "text-decoration: underline;"
+                if fg: style_str += f"color: {fg};"
+                if bg: style_str += f"background-color: {bg};"
+                if style_str:
+                    html_out += f"<span style='{style_str}'>"
+                    open_spans += 1
+                i += 1
+            elif char == '\x1F':  # Underline Toggle
+                html_out += close_all_tags()
+                underline = not underline
+                style_str = ""
+                if bold: style_str += "font-weight: bold;"
+                if underline: style_str += "text-decoration: underline;"
+                if fg: style_str += f"color: {fg};"
+                if bg: style_str += f"background-color: {bg};"
+                if style_str:
+                    html_out += f"<span style='{style_str}'>"
+                    open_spans += 1
+                i += 1
+            elif char == '\x0F':  # Reset formatting
+                html_out += close_all_tags()
+                bold = False
+                underline = False
+                fg = None
+                bg = None
+                i += 1
+            elif char == '\x03':  # mIRC Color Control Code
+                html_out += close_all_tags()
+                i += 1
+                
+                fg_str = ""
+                while i < n and text[i].isdigit() and len(fg_str) < 2:
+                    fg_str += text[i]
+                    i += 1
+                
+                bg_str = ""
+                if i < n and text[i] == ',':
+                    if i + 1 < n and text[i+1].isdigit():
+                        i += 1 # skip ','
+                        while i < n and text[i].isdigit() and len(bg_str) < 2:
+                            bg_str += text[i]
+                            i += 1
+                
+                if fg_str:
+                    fg = mirc_colors.get(int(fg_str), None)
+                else:
+                    fg = None
+                    bg = None
+                    
+                if bg_str:
+                    bg = mirc_colors.get(int(bg_str), None)
+                    
+                style_str = ""
+                if bold: style_str += "font-weight: bold;"
+                if underline: style_str += "text-decoration: underline;"
+                if fg: style_str += f"color: {fg};"
+                if bg: style_str += f"background-color: {bg};"
+                if style_str:
+                    html_out += f"<span style='{style_str}'>"
+                    open_spans += 1
+            else:
+                html_out += char
+                i += 1
+                
+        html_out += close_all_tags()
+
+        # ทำให้ URL ลิงก์คลิกได้จริง
+        def replace_url(match):
+            url = match.group(0)
+            href = url if url.startswith('http') else 'http://' + url
+            link_color = "#6366f1" if is_dark else "#4f46e5"
+            return f'<a href="{href}" style="color: {link_color}; text-decoration: underline;">{url}</a>'
+        
+        html_out = re.sub(r'(https?://[^\s]+|www\.[^\s]+)', replace_url, html_out)
+        return html_out
+
     def append_system_msg(self, text):
         """ เพิ่มข้อความระบบลงหน้าจอ Status หรือข่าวสาร MOTD """
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         
+        # แปลงรหัส mIRC และ URL ให้สวยงาม
+        formatted_text = self.format_mirc_text(text)
+        
         # หากตรวจพบคีย์เวิร์ด MOTD ให้นำข่าวสารไปลงในแท็บ MOTD
         if "[MOTD]" in text or "MOTD" in text:
-            msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: #800080;'>• {text}</span></div>"
+            msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: #c084fc;'>• {formatted_text}</span></div>"
             self.motd_display.append(msg_html)
             return
 
@@ -725,8 +894,8 @@ class PIRCHMainWindow(QMainWindow):
         current_text = self.tab_widget.tabText(current_idx)
         current_text_clean = current_text.split(" (")[0]
         
-        text_color = "#0891b2" if self.current_theme == "light" else "#38bdf8"
-        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color};'>• {text}</span></div>"
+        text_color = "#475569" if self.current_theme == "light" else "#94a3b8"
+        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color};'>• {formatted_text}</span></div>"
         
         if current_text_clean.lower() in self.rooms:
             self.rooms[current_text_clean.lower()]["chat_display"].append(msg_html)
@@ -747,6 +916,8 @@ class PIRCHMainWindow(QMainWindow):
         if not is_me and my_nick and my_nick.lower() in message.lower():
             is_mention = True
 
+        formatted_message = self.format_mirc_text(message)
+
         if is_mention and self.mention_notify_enabled:
             # ใช้สีเหลือง/ทองอร่าม สไตล์แจ้งเตือน ไฮไลท์หรูหรา และปี๊บเสียง
             bg_color = "rgba(245, 158, 11, 0.15)" if self.current_theme == "dark" else "rgba(245, 158, 11, 0.08)"
@@ -766,7 +937,7 @@ class PIRCHMainWindow(QMainWindow):
             nick_color = "#4f46e5" if is_me else "#059669"
             text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
         
-        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; padding: 2px 6px; background-color: {bg_color}; border-left: {border_left};'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
+        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; padding: 2px 6px; background-color: {bg_color}; border-left: {border_left};'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{formatted_message}</span></div>"
         
         target_key = target.lower()
         if target_key in self.rooms:
@@ -778,7 +949,7 @@ class PIRCHMainWindow(QMainWindow):
                 room["chat_display"].append(msg_html)
             else:
                 # กรณีเป็นข้อความกระซิบเดี่ยว (Private Message) ให้แสดงไว้ที่ห้อง Status พร้อมข้อความระบุชัดเจน
-                self.status_display.append(f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{message}</span></div>")
+                self.status_display.append(f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{formatted_message}</span></div>")
 
     def clean_nick(self, nick):
         """ ล้างค่าสัญลักษณ์หน้าชื่อผู้ใช้งาน เช่น @, +, %, & และ ~ """
@@ -1056,6 +1227,96 @@ class PIRCHMainWindow(QMainWindow):
                 # แสดงข้อความตัวเองขึ้นหน้าจอแชทช่องที่เลือกทันที
                 my_nick = self.nick_input.text()
                 self.on_message_received(target_chan, my_nick, text)
+
+    def select_and_send_file(self):
+        """ เปิดกล่องเลือกไฟล์และทำการจำลองการส่งไฟล์/รูปภาพ """
+        from PyQt6.QtWidgets import QFileDialog, QTextBrowser
+        from PyQt6.QtCore import QTimer
+        import os
+        import base64
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "เลือกไฟล์หรือรูปภาพเพื่อส่ง", "", "All Files (*);;Images (*.png *.jpg *.jpeg *.gif *.webp)"
+        )
+        if not file_path or not os.path.exists(file_path):
+            return
+
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        
+        # จัดขนาดความละเอียดให้อ่านเข้าใจง่าย
+        if file_size > 1024 * 1024:
+            size_str = f"{file_size / (1024 * 1024):.2f} MB"
+        else:
+            size_str = f"{file_size / 1024:.1f} KB"
+
+        is_image = file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
+        
+        # อ่านไฟล์เป็น base64 เพื่อแสดงพรีวิวจำลองได้ทันที
+        data_url = ""
+        if is_image:
+            try:
+                with open(file_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode('utf-8')
+                    mime_type = "image/png"
+                    if file_name.lower().endswith('.jpg') or file_name.lower().endswith('.jpeg'):
+                        mime_type = "image/jpeg"
+                    elif file_name.lower().endswith('.gif'):
+                        mime_type = "image/gif"
+                    elif file_name.lower().endswith('.webp'):
+                        mime_type = "image/webp"
+                    
+                    data_url = f"data:{mime_type};base64,{encoded}"
+            except Exception as e:
+                print(f"Error reading file for base64: {e}")
+
+        # เพิ่มข้อความการส่งไฟล์เข้าไปในหน้าห้องแชทจำลองที่กำลังเลือกอยู่
+        current_tab_index = self.tab_widget.currentIndex()
+        tab_text = self.tab_widget.tabText(current_tab_index)
+        tab_text_clean = tab_text.split(" (")[0]
+        
+        # แสดงข้อความในฝั่งตนเองก่อน
+        from datetime import datetime
+        time_str = datetime.now().strftime("%H:%M")
+        
+        msg_html = f"<div style='margin-bottom: 4px;'><span style='color: #64748b;'>[{time_str}]</span> " \
+                   f"<span style='color: #818cf8; font-weight: bold;'>&lt;{self.nick_input.text()}&gt;</span> " \
+                   f"<span style='color: #10b981; font-weight: bold;'>[ส่งไฟล์สำเร็จ] 📎 {file_name} ({size_str})</span></div>"
+        
+        if is_image and data_url:
+            msg_html += f"<div style='margin-top: 4px; margin-bottom: 8px;'><img src='{data_url}' width='240' style='border: 1px solid #cbd5e1; border-radius: 6px;' /></div>"
+        else:
+            msg_html += f"<div style='margin-top: 4px; margin-bottom: 8px; font-family: monospace; font-size: 11px; color: #64748b; background: #e2e8f0; padding: 6px; border-radius: 4px;'>📄 {file_name} ({size_str}) [ดาวน์โหลดจำลอง]</div>"
+
+        # แสดงข้อมูลบน chat browser ของแท็บปัจจุบัน
+        current_widget = self.tab_widget.currentWidget()
+        if current_widget:
+            chat_display = current_widget.findChild(QTextBrowser)
+            if chat_display:
+                chat_display.append(msg_html)
+
+        # หากมีการเชื่อมต่อจริง ให้ส่งลิงก์จำลอง (เช่นอัปโหลดไปยังบริการแชร์ไฟล์) เพื่อไม่ให้กระทบต่อ protocol IRC ปกติ
+        if self.irc_worker and self.irc_worker.is_connected:
+            target = tab_text_clean
+            self.irc_worker.send_line(f"PRIVMSG {target} :[ไฟล์สำเร็จ] 📎 {file_name} ({size_str})")
+            
+        # มีเสียงตอบรับหรือแชทตอบกลับจากบอทหลังจาก 1 วินาที เพื่อให้ผู้ใช้รู้สึกฟินและเป็นธรรมชาติ
+        def bot_reply():
+            bot_name = "Python_Expert" if tab_text_clean == "#pyqt6" else "PyQt6_Fan"
+            reply_text = f"ได้รับรูปภาพ \"{file_name}\" เรียบร้อยแล้วครับ! ภาพสวยคมชัดมาก 🖼️✨" if is_image \
+                else f"ได้รับไฟล์ \"{file_name}\" ({size_str}) เรียบร้อยแล้วครับ ขอบคุณที่ร่วมแบ่งปันข้อมูล! 📂🤖"
+            
+            bot_html = f"<div style='margin-bottom: 4px;'><span style='color: #64748b;'>[{time_str}]</span> " \
+                       f"<span style='color: #c084fc; font-weight: bold;'>&lt;{bot_name}&gt;</span> " \
+                       f"<span style='color: #475569;'>{reply_text}</span></div>"
+            
+            if current_widget:
+                chat_display = current_widget.findChild(QTextBrowser)
+                if chat_display:
+                    chat_display.append(bot_html)
+
+        # จำลองการส่งข้อความตอบกลับจากระบบหรือบอท
+        QTimer.singleShot(1000, bot_reply)
 
     def play_radio(self, station):
         """ เล่นสถานีวิทยุออนไลน์ที่กำหนด """

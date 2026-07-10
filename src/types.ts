@@ -5,6 +5,10 @@ export interface IRCMessage {
   text: string;
   type: 'system' | 'user' | 'error' | 'motd' | 'join' | 'part' | 'info';
   isMention?: boolean;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: string;
+  isImage?: boolean;
 }
 
 export interface IRCChannel {

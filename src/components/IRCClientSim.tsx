@@ -1,11 +1,273 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff, AtSign, MessageSquare } from 'lucide-react';
+import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff, AtSign, MessageSquare, Paperclip } from 'lucide-react';
 import { IRCMessage, IRCChannel } from '../types';
 
 interface IRCClientSimProps {
   initialNick?: string;
   initialServer?: string;
   initialChannel?: string;
+}
+
+const MIRC_COLORS: { [key: number]: string } = {
+  0: '#ffffff', // White
+  1: '#000000', // Black
+  2: '#00007f', // Blue
+  3: '#009300', // Green
+  4: '#ff0000', // Red
+  5: '#7f0000', // Brown
+  6: '#9c009c', // Purple
+  7: '#fc7f00', // Orange
+  8: '#ffff00', // Yellow
+  9: '#00fc00', // Light Green
+  10: '#009393', // Cyan
+  11: '#00fcfc', // Light Cyan
+  12: '#0000fc', // Light Blue
+  13: '#ff00ff', // Pink
+  14: '#7f7f7f', // Grey
+  15: '#d2d2d2', // Light Grey
+};
+
+const getMircColor = (colorNum: number, isDark: boolean): string => {
+  if (isDark) {
+    const darkColors: { [key: number]: string } = {
+      0: '#ffffff', // White
+      1: '#94a3b8', // Black -> Slate-400
+      2: '#60a5fa', // Blue -> Blue-400
+      3: '#4ade80', // Green -> Green-400
+      4: '#f87171', // Red -> Red-400
+      5: '#fb923c', // Brown -> Orange-400
+      6: '#c084fc', // Purple -> Purple-400
+      7: '#f59e0b', // Orange -> Amber-500
+      8: '#facc15', // Yellow -> Yellow-400
+      9: '#86efac', // Light Green -> Green-300
+      10: '#2dd4bf', // Cyan -> Teal-400
+      11: '#22d3ee', // Light Cyan -> Cyan-400
+      12: '#93c5fd', // Light Blue -> Blue-300
+      13: '#f472b6', // Pink -> Pink-400
+      14: '#cbd5e1', // Grey -> Slate-300
+      15: '#e2e8f0', // Light Grey -> Slate-200
+    };
+    return darkColors[colorNum] || '#ffffff';
+  } else {
+    const lightColors: { [key: number]: string } = {
+      0: '#334155', // White -> Slate-700
+      1: '#000000', // Black
+      2: '#1d4ed8', // Blue -> Blue-750
+      3: '#15803d', // Green -> Green-700
+      4: '#b91c1c', // Red -> Red-700
+      5: '#7c2d12', // Brown -> Orange-900
+      6: '#7e22ce', // Purple -> Purple-700
+      7: '#c2410c', // Orange -> Orange-700
+      8: '#a16207', // Yellow -> Yellow-700
+      9: '#166534', // Light Green -> Green-800
+      10: '#0f766e', // Cyan -> Teal-700
+      11: '#0369a1', // Light Cyan -> Cyan-700
+      12: '#1e40af', // Light Blue -> Blue-800
+      13: '#be185d', // Pink -> Pink-700
+      14: '#4b5563', // Grey -> Grey-600
+      15: '#374151', // Light Grey -> Grey-700
+    };
+    return lightColors[colorNum] || '#000000';
+  }
+};
+
+interface TextSegment {
+  text: string;
+  bold: boolean;
+  underline: boolean;
+  fgColor: string | null;
+  bgColor: string | null;
+}
+
+function preprocessFormattingText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\^B/g, '\x02')
+    .replace(/\^b/g, '\x02')
+    .replace(/\^U/g, '\x1F')
+    .replace(/\^u/g, '\x1F')
+    .replace(/\^O/g, '\x0F')
+    .replace(/\^o/g, '\x0F')
+    .replace(/\^C/g, '\x03')
+    .replace(/\^c/g, '\x03')
+    .replace(/&B/gi, '\x02')
+    .replace(/&U/gi, '\x1F')
+    .replace(/&O/gi, '\x0F')
+    .replace(/&C/gi, '\x03');
+}
+
+function parseMIRCText(text: string, isDark: boolean): TextSegment[] {
+  const cleanText = preprocessFormattingText(text);
+  const segments: TextSegment[] = [];
+  let currentText = '';
+  let bold = false;
+  let underline = false;
+  let fgColor: string | null = null;
+  let bgColor: string | null = null;
+
+  const pushSegment = () => {
+    if (currentText) {
+      segments.push({
+        text: currentText,
+        bold,
+        underline,
+        fgColor,
+        bgColor
+      });
+      currentText = '';
+    }
+  };
+
+  let i = 0;
+  while (i < cleanText.length) {
+    const char = cleanText[i];
+    if (char === '\x02') {
+      pushSegment();
+      bold = !bold;
+      i++;
+    } else if (char === '\x1F') {
+      pushSegment();
+      underline = !underline;
+      i++;
+    } else if (char === '\x0F') {
+      pushSegment();
+      bold = false;
+      underline = false;
+      fgColor = null;
+      bgColor = null;
+      i++;
+    } else if (char === '\x03') {
+      pushSegment();
+      i++; // skip '\x03'
+      
+      let fgStr = '';
+      if (i < cleanText.length && /\d/.test(cleanText[i])) {
+        fgStr += cleanText[i];
+        i++;
+        if (i < cleanText.length && /\d/.test(cleanText[i])) {
+          fgStr += cleanText[i];
+          i++;
+        }
+      }
+      
+      let bgStr = '';
+      if (i < cleanText.length && cleanText[i] === ',') {
+        if (i + 1 < cleanText.length && /\d/.test(cleanText[i + 1])) {
+          i++; // skip ','
+          bgStr += cleanText[i];
+          i++;
+          if (i < cleanText.length && /\d/.test(cleanText[i])) {
+            bgStr += cleanText[i];
+            i++;
+          }
+        }
+      }
+
+      if (fgStr) {
+        const fgNum = parseInt(fgStr, 10);
+        fgColor = getMircColor(fgNum, isDark);
+      } else {
+        fgColor = null;
+        bgColor = null;
+      }
+
+      if (bgStr) {
+        const bgNum = parseInt(bgStr, 10);
+        bgColor = getMircColor(bgNum, isDark);
+      }
+    } else {
+      currentText += char;
+      i++;
+    }
+  }
+  pushSegment();
+  return segments;
+}
+
+interface ContentToken {
+  type: 'text' | 'link';
+  content: string;
+}
+
+function tokenizeLinks(text: string): ContentToken[] {
+  const urlRegex = /(\bhttps?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const tokens: ContentToken[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    const matchIndex = match.index;
+    const url = match[0];
+
+    if (matchIndex > lastIndex) {
+      tokens.push({
+        type: 'text',
+        content: text.slice(lastIndex, matchIndex)
+      });
+    }
+
+    tokens.push({
+      type: 'link',
+      content: url
+    });
+
+    lastIndex = urlRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push({
+      type: 'text',
+      content: text.slice(lastIndex)
+    });
+  }
+
+  return tokens.length > 0 ? tokens : [{ type: 'text', content: text }];
+}
+
+export function renderFormattedText(text: string, isDarkMode: boolean): React.ReactNode[] {
+  if (!text) return [];
+  const segments = parseMIRCText(text, isDarkMode);
+  const result: React.ReactNode[] = [];
+  let keyCounter = 0;
+
+  segments.forEach((seg) => {
+    const tokens = tokenizeLinks(seg.text);
+    tokens.forEach((token) => {
+      const styles: React.CSSProperties = {};
+      if (seg.bold) styles.fontWeight = 'bold';
+      if (seg.underline) styles.textDecoration = 'underline';
+      if (seg.fgColor) styles.color = seg.fgColor;
+      if (seg.bgColor) styles.backgroundColor = seg.bgColor;
+
+      if (token.type === 'link') {
+        const href = token.content.startsWith('www.') ? `http://${token.content}` : token.content;
+        result.push(
+          <a
+            key={`link-${keyCounter++}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-500 dark:text-indigo-400 underline hover:text-indigo-600 dark:hover:text-indigo-300 break-all cursor-pointer inline-flex items-center gap-0.5"
+            style={{ fontWeight: seg.bold ? 'bold' : undefined, textDecoration: 'underline' }}
+          >
+            {token.content}
+          </a>
+        );
+      } else {
+        if (Object.keys(styles).length > 0) {
+          result.push(
+            <span key={`text-${keyCounter++}`} style={styles}>
+              {token.content}
+            </span>
+          );
+        } else {
+          result.push(token.content);
+        }
+      }
+    });
+  });
+
+  return result.length > 0 ? result : [text];
 }
 
 export default function IRCClientSim({
@@ -70,6 +332,88 @@ export default function IRCClientSim({
   const [inputValue, setInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileAttachClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const sizeStr = file.size > 1024 * 1024 
+      ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+      : `${(file.size / 1024).toFixed(1)} KB`;
+
+    const isImg = file.type.startsWith('image/');
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      
+      const timestamp = new Date().toLocaleTimeString();
+      const newMessageId = `msg-${Date.now()}`;
+      
+      const fileMsg: IRCMessage = {
+        id: newMessageId,
+        timestamp,
+        sender: nick,
+        text: `[ส่งไฟล์สำเร็จ] 📎 ${file.name} (${sizeStr})`,
+        type: 'user',
+        fileUrl: dataUrl,
+        fileName: file.name,
+        fileSize: sizeStr,
+        isImage: isImg
+      };
+
+      setRooms((prev) => {
+        const room = prev[currentRoom];
+        if (!room) return prev;
+        return {
+          ...prev,
+          [currentRoom]: {
+            ...room,
+            messages: [...room.messages, fileMsg],
+          },
+        };
+      });
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      setTimeout(() => {
+        const botName = currentRoom === '#pyqt6' ? 'Python_Expert' : 'PyQt6_Fan';
+        const replyText = isImg 
+          ? `โอ้! ได้รับรูปภาพ "${file.name}" เรียบร้อยแล้วครับ รูปภาพสวยงามและชัดเจนมาก! 🖼️✨`
+          : `ได้รับไฟล์ "${file.name}" (${sizeStr}) เรียบร้อยแล้วครับ ขอบคุณสำหรับไฟล์ข้อมูล! 📂🤖`;
+        
+        const replyMsg: IRCMessage = {
+          id: `msg-reply-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          sender: botName,
+          text: replyText,
+          type: 'user',
+        };
+
+        setRooms((prev) => {
+          const room = prev[currentRoom];
+          if (!room) return prev;
+          return {
+            ...prev,
+            [currentRoom]: {
+              ...room,
+              messages: [...room.messages, replyMsg],
+            },
+          };
+        });
+      }, 1000);
+    };
+
+    reader.readAsDataURL(file);
+  };
   
   // Font size setting state (sm = small, md = medium, lg = large)
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
@@ -852,6 +1196,11 @@ export default function IRCClientSim({
         addMessageToRoom(currentRoom, 'SYSTEM', '/quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/help - เปิดคู่มือคำสั่งช่วยเหลือนี้', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/me ข้อความการกระทำ - ส่งข้อความสถานะการกระทำ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '=== วิธีจัดรูปแบบอักษรและข้อความสีแบบ mIRC ===', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '^Bตัวหนา^B (หรือใช้ &B) | ^Uขีดเส้นใต้^U (หรือใช้ &U)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '^Cตัวเลขสีอักษร - เช่น ^C4สีแดง ^C12สีฟ้า ^C3สีเขียว ^C9เขียวอ่อน', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '^Cสีอักษร,สีพื้นหลัง - เช่น ^C0,1อักษรขาวพื้นหลังดำ (รหัสสี 0-15)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '^O (หรือใช้ &O) - เพื่อรีเซ็ตค่ารูปแบบกลับเป็นตัวอักษรธรรมดา', 'info');
       } else if (command === 'ME') {
         if (currentRoom === 'Status') {
           addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
@@ -993,59 +1342,6 @@ export default function IRCClientSim({
                 : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
             }`}
           />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Join Chan:</span>
-          <input
-            type="text"
-            value={targetChannel}
-            onChange={(e) => !isConnected && !isConnecting && setTargetChannel(e.target.value)}
-            disabled={isConnected || isConnecting}
-            placeholder="#channel"
-            className={`px-2.5 py-1 w-[80px] text-xs outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
-              isDarkMode
-                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
-                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
-            }`}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Password:</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={isConnected || isConnecting}
-            placeholder="SASL Pass"
-            className={`px-2.5 py-1 w-[90px] text-xs outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
-              isDarkMode
-                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
-                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
-            }`}
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 select-none">
-          <label className="flex items-center gap-1 cursor-pointer text-xs font-semibold">
-            <input
-              type="checkbox"
-              checked={useSSL}
-              disabled={isConnected || isConnecting}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setUseSSL(checked);
-                if (checked && port === '6667') {
-                  setPort('6697');
-                } else if (!checked && port === '6697') {
-                  setPort('6667');
-                }
-              }}
-              className="accent-indigo-600 cursor-pointer"
-            />
-            <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>SSL</span>
-          </label>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -1254,6 +1550,62 @@ export default function IRCClientSim({
           </span>
         </div>
 
+        {/* Settings fields beautifully integrated on the Radio Bar */}
+        <div className="flex items-center gap-3 pl-3 border-l border-slate-700/10 dark:border-slate-800/60 flex-wrap">
+          <div className="flex items-center gap-1">
+            <span className={`font-semibold whitespace-nowrap text-[10px] uppercase tracking-wider transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Join:</span>
+            <input
+              type="text"
+              value={targetChannel}
+              onChange={(e) => !isConnected && !isConnecting && setTargetChannel(e.target.value)}
+              disabled={isConnected || isConnecting}
+              placeholder="#channel"
+              className={`px-2 py-0.5 w-[75px] text-[11px] outline-none font-mono rounded transition-all shadow-sm focus:ring-1 ${
+                isDarkMode
+                  ? 'bg-slate-950 border border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                  : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+              }`}
+            />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className={`font-semibold whitespace-nowrap text-[10px] uppercase tracking-wider transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Pass:</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isConnected || isConnecting}
+              placeholder="SASL"
+              className={`px-2 py-0.5 w-[65px] text-[11px] outline-none font-mono rounded transition-all shadow-sm focus:ring-1 ${
+                isDarkMode
+                  ? 'bg-slate-950 border border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                  : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+              }`}
+            />
+          </div>
+
+          <div className="flex items-center select-none">
+            <label className="flex items-center gap-1 cursor-pointer text-[10px] uppercase tracking-wider font-semibold">
+              <input
+                type="checkbox"
+                checked={useSSL}
+                disabled={isConnected || isConnecting}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setUseSSL(checked);
+                  if (checked && port === '6667') {
+                    setPort('6697');
+                  } else if (!checked && port === '6697') {
+                    setPort('6667');
+                  }
+                }}
+                className="accent-indigo-600 cursor-pointer w-3 h-3"
+              />
+              <span className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>SSL</span>
+            </label>
+          </div>
+        </div>
+
         {/* Volume controls */}
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -1417,12 +1769,35 @@ export default function IRCClientSim({
                 {/* 4. Text Content Column with Indentation Alignment */}
                 <div className="flex-1 text-left break-words">
                   {isUserMsg ? (
-                    <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
-                      {msg.text}
-                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                        {renderFormattedText(msg.text, isDarkMode)}
+                      </span>
+                      {msg.fileUrl && (
+                        <div className={`mt-1 p-2 rounded-lg border max-w-sm ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                          {msg.isImage ? (
+                            <div className="flex flex-col gap-1">
+                              <img src={msg.fileUrl} alt={msg.fileName} className="max-h-40 object-contain rounded border border-slate-700/10 dark:border-slate-800" referrerPolicy="no-referrer" />
+                              <span className="text-[10px] text-slate-500 font-mono mt-0.5 truncate block">{msg.fileName} ({msg.fileSize})</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl">📄</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-semibold block truncate text-indigo-500">{msg.fileName}</span>
+                                <span className="text-[10px] text-slate-500 font-mono">{msg.fileSize}</span>
+                              </div>
+                              <a href={msg.fileUrl} download={msg.fileName} className="px-2 py-1 text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-all cursor-pointer">
+                                Download
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <span className={`font-sans italic ${getMessageColorClass(msg.type)}`}>
-                      {msg.text}
+                      {renderFormattedText(msg.text, isDarkMode)}
                     </span>
                   )}
                 </div>
@@ -1559,6 +1934,26 @@ export default function IRCClientSim({
       <form onSubmit={handleSendMessage} className={`border-t p-2.5 flex gap-2 transition-colors ${
         isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
       }`}>
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileChange} 
+          style={{ display: 'none' }} 
+        />
+        <button
+          type="button"
+          onClick={handleFileAttachClick}
+          disabled={!isConnected && currentRoom === 'Status'}
+          className={`flex items-center justify-center p-2 rounded-lg border transition-all duration-150 active:scale-95 disabled:scale-100 disabled:opacity-50 cursor-pointer shadow-sm ${
+            isDarkMode
+              ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 disabled:bg-slate-900 disabled:text-slate-600'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 disabled:bg-slate-100 disabled:text-slate-400'
+          }`}
+          title="ส่งไฟล์หรือรูปภาพ (Attach File/Image)"
+          id="btn-irc-attach"
+        >
+          <Paperclip size={14} />
+        </button>
         <input
           ref={chatInputRef}
           type="text"
