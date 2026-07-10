@@ -166,9 +166,6 @@ class IRCWorker(QObject):
 # =====================================================================
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
 # =====================================================================
-# =====================================================================
-# 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
-# =====================================================================
 class PIRCHMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -220,13 +217,13 @@ class PIRCHMainWindow(QMainWindow):
 
         # ช่องใส่ Nickname
         top_layout.addWidget(QLabel("Nick:"))
-        self.nick_input = QLineEdit("pyIRCH")
+        self.nick_input = QLineEdit("pyIRCH_Guest")
         self.nick_input.setFixedWidth(100)
         top_layout.addWidget(self.nick_input)
 
         # ช่องใส่ Channel ที่ต้องการ Join หลังจาก Connect สำเร็จ
         top_layout.addWidget(QLabel("Join Chan:"))
-        self.channel_input = QLineEdit("#thaiirc")
+        self.channel_input = QLineEdit("#pyqt6")
         self.channel_input.setFixedWidth(80)
         top_layout.addWidget(self.channel_input)
 
@@ -507,8 +504,9 @@ class PIRCHMainWindow(QMainWindow):
         """ เมื่อได้รับข้อความแชท """
         is_me = nick == self.nick_input.text().strip()
         nick_color = "#4f46e5" if is_me else "#059669"
-        text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
-        msg_html = f"<div style='margin: 3px 0;'><b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
+        
+        text_color = "#0f172a" if self.current_theme == "light" else "#f1f5f9"
+        msg_html = f"<div style='margin: 3px 0;'><b>&lt;<span style='color: {nick_color};'>{nick}</span>&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
         
         target_key = target.lower()
         if target_key in self.rooms:
