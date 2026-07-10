@@ -17,6 +17,7 @@ export interface IRCChannel {
   users: string[];
   messages: IRCMessage[];
   unreadCount: number;
+  bannedUsers?: string[];
 }
 
 export interface DesktopWindow {

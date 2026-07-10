@@ -328,6 +328,9 @@ export default function IRCClientSim({
     },
   });
 
+  // Banned users map (channel name -> array of banned clean nicks)
+  const [bannedUsersMap, setBannedUsersMap] = useState<Record<string, string[]>>({});
+
   // Message input state
   const [inputValue, setInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -1005,6 +1008,13 @@ export default function IRCClientSim({
   const joinChannel = (chanName: string) => {
     const formattedChan = chanName.startsWith('#') ? chanName : `#${chanName}`;
     
+    // Check if user is banned
+    const bannedNicks = bannedUsersMap[formattedChan.toLowerCase()] || [];
+    if (bannedNicks.includes(cleanNick(nick).toLowerCase())) {
+      addMessageToRoom(currentRoom, 'SYSTEM', `* ไม่สามารถเข้าร่วมห้อง ${formattedChan} ได้ เนื่องจากคุณติดแบน (+b)`, 'error');
+      return;
+    }
+
     setRooms((prev) => {
       // If already in room, do nothing
       if (prev[formattedChan]) return prev;
@@ -1158,8 +1168,296 @@ export default function IRCClientSim({
           return;
         }
 
-        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${cleanNick(foundUser)} ถูกเตะออกจากห้อง ${currentRoom} โดย ${nick} (${reason})`, 'error');
+        const cleanKicked = cleanNick(foundUser);
+        const isSelf = cleanKicked.toLowerCase() === cleanNick(nick).toLowerCase();
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${cleanKicked} ถูกเตะออกจากห้อง ${currentRoom} โดย ${nick} (${reason})`, 'error');
         removeUserFromRoom(currentRoom, foundUser);
+
+        if (isSelf) {
+          const leavingRoom = currentRoom;
+          setTimeout(() => {
+            setCurrentRoom('Status');
+            setRooms((prev) => {
+              const next = { ...prev };
+              delete next[leavingRoom];
+              return next;
+            });
+            addMessageToRoom('Status', 'SYSTEM', `*** คุณถูกเตะออกจากห้อง ${leavingRoom} (${reason})`, 'error');
+          }, 800);
+        }
+      } else if (command === 'BAN') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'ไม่สามารถแบนผู้ใช้ในหน้าต่างสถานะได้', 'error');
+          return;
+        }
+        const cmdParts = args.split(' ');
+        const targetNickName = cmdParts[0];
+        
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการแบน เช่น /ban Somchai', 'error');
+          return;
+        }
+
+        const cleanBanned = cleanNick(targetNickName);
+        
+        setBannedUsersMap((prev) => {
+          const list = prev[currentRoom.toLowerCase()] || [];
+          if (list.includes(cleanBanned.toLowerCase())) return prev;
+          return {
+            ...prev,
+            [currentRoom.toLowerCase()]: [...list, cleanBanned.toLowerCase()],
+          };
+        });
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} ตั้งแบน (Mode +b) ให้กับ ${cleanBanned}!*@* ในห้อง ${currentRoom}`, 'system');
+
+        const roomUsers = rooms[currentRoom]?.users || [];
+        const foundUser = roomUsers.find(u => cleanNick(u) === cleanBanned);
+        if (foundUser) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `*** ${cleanBanned} ถูกเตะออกจากห้อง ${currentRoom} โดย ${nick} (Banned from channel)`, 'error');
+          removeUserFromRoom(currentRoom, foundUser);
+          
+          if (cleanBanned.toLowerCase() === cleanNick(nick).toLowerCase()) {
+            const leavingRoom = currentRoom;
+            setTimeout(() => {
+              setCurrentRoom('Status');
+              setRooms((prev) => {
+                const next = { ...prev };
+                delete next[leavingRoom];
+                return next;
+              });
+              addMessageToRoom('Status', 'SYSTEM', `*** คุณถูกแบนและเตะออกจากห้อง ${leavingRoom}`, 'error');
+            }, 800);
+          }
+        }
+      } else if (command === 'UNBAN') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'ไม่สามารถปลดแบนผู้ใช้ในหน้าต่างสถานะได้', 'error');
+          return;
+        }
+        const cmdParts = args.split(' ');
+        const targetNickName = cmdParts[0];
+        
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการปลดแบน เช่น /unban Somchai', 'error');
+          return;
+        }
+
+        const cleanUnbanned = cleanNick(targetNickName);
+        
+        setBannedUsersMap((prev) => {
+          const list = prev[currentRoom.toLowerCase()] || [];
+          if (!list.includes(cleanUnbanned.toLowerCase())) return prev;
+          return {
+            ...prev,
+            [currentRoom.toLowerCase()]: list.filter(u => u !== cleanUnbanned.toLowerCase()),
+          };
+        });
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} ยกเลิกแบน (Mode -b) ให้กับ ${cleanUnbanned}!*@* ในห้อง ${currentRoom}`, 'system');
+      } else if (command === 'OP') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
+          return;
+        }
+        const targetNickName = args.trim();
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการแต่งตั้งเป็นผู้ดูแล เช่น /op Somchai', 'error');
+          return;
+        }
+
+        const cleanTarget = cleanNick(targetNickName);
+        const isTargetMe = cleanTarget.toLowerCase() === cleanNick(nick).toLowerCase();
+
+        const roomUsers = rooms[currentRoom]?.users || [];
+        const exists = roomUsers.some(u => cleanNick(u) === cleanTarget);
+        if (!exists) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `ไม่พบผู้ใช้งาน ${targetNickName} ในห้องแชทนี้`, 'error');
+          return;
+        }
+
+        setRooms((prev) => {
+          const room = prev[currentRoom];
+          if (!room) return prev;
+          
+          return {
+            ...prev,
+            [currentRoom]: {
+              ...room,
+              users: room.users.map((u) => {
+                if (cleanNick(u) === cleanTarget) {
+                  return `@${cleanTarget}`;
+                }
+                return u;
+              }),
+            },
+          };
+        });
+
+        if (isTargetMe) {
+          setNick(`@${cleanTarget}`);
+        }
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} มอบสถานะผู้ดูแลห้อง (Mode +o) ให้กับ ${cleanTarget}`, 'system');
+      } else if (command === 'DEOP') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
+          return;
+        }
+        const targetNickName = args.trim();
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการถอนสิทธิ์ผู้ดูแล เช่น /deop Somchai', 'error');
+          return;
+        }
+
+        const cleanTarget = cleanNick(targetNickName);
+        const isTargetMe = cleanTarget.toLowerCase() === cleanNick(nick).toLowerCase();
+
+        const roomUsers = rooms[currentRoom]?.users || [];
+        const exists = roomUsers.some(u => cleanNick(u) === cleanTarget);
+        if (!exists) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `ไม่พบผู้ใช้งาน ${targetNickName} ในห้องแชทนี้`, 'error');
+          return;
+        }
+
+        setRooms((prev) => {
+          const room = prev[currentRoom];
+          if (!room) return prev;
+          
+          return {
+            ...prev,
+            [currentRoom]: {
+              ...room,
+              users: room.users.map((u) => {
+                if (cleanNick(u) === cleanTarget) {
+                  return cleanTarget;
+                }
+                return u;
+              }),
+            },
+          };
+        });
+
+        if (isTargetMe) {
+          setNick(cleanTarget);
+        }
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} ยกเลิกสถานะผู้ดูแลห้อง (Mode -o) ของ ${cleanTarget}`, 'system');
+      } else if (command === 'VOICE') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
+          return;
+        }
+        const targetNickName = args.trim();
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการให้สิทธิ์พูด เช่น /voice Somchai', 'error');
+          return;
+        }
+
+        const cleanTarget = cleanNick(targetNickName);
+        const isTargetMe = cleanTarget.toLowerCase() === cleanNick(nick).toLowerCase();
+
+        const roomUsers = rooms[currentRoom]?.users || [];
+        const exists = roomUsers.some(u => cleanNick(u) === cleanTarget);
+        if (!exists) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `ไม่พบผู้ใช้งาน ${targetNickName} ในห้องแชทนี้`, 'error');
+          return;
+        }
+
+        setRooms((prev) => {
+          const room = prev[currentRoom];
+          if (!room) return prev;
+          
+          return {
+            ...prev,
+            [currentRoom]: {
+              ...room,
+              users: room.users.map((u) => {
+                if (cleanNick(u) === cleanTarget) {
+                  if (u.startsWith('@')) return u;
+                  return `+${cleanTarget}`;
+                }
+                return u;
+              }),
+            },
+          };
+        });
+
+        if (isTargetMe && !nick.startsWith('@')) {
+          setNick(`+${cleanTarget}`);
+        }
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} มอบสิทธิ์การพิมพ์เสียง (Mode +v) ให้กับ ${cleanTarget}`, 'system');
+      } else if (command === 'DEVOICE') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
+          return;
+        }
+        const targetNickName = args.trim();
+        if (!targetNickName) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการถอนสิทธิ์พูด เช่น /devoice Somchai', 'error');
+          return;
+        }
+
+        const cleanTarget = cleanNick(targetNickName);
+        const isTargetMe = cleanTarget.toLowerCase() === cleanNick(nick).toLowerCase();
+
+        const roomUsers = rooms[currentRoom]?.users || [];
+        const exists = roomUsers.some(u => cleanNick(u) === cleanTarget);
+        if (!exists) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `ไม่พบผู้ใช้งาน ${targetNickName} ในห้องแชทนี้`, 'error');
+          return;
+        }
+
+        setRooms((prev) => {
+          const room = prev[currentRoom];
+          if (!room) return prev;
+          
+          return {
+            ...prev,
+            [currentRoom]: {
+              ...room,
+              users: room.users.map((u) => {
+                if (cleanNick(u) === cleanTarget) {
+                  if (u.startsWith('+')) return cleanTarget;
+                  return u;
+                }
+                return u;
+              }),
+            },
+          };
+        });
+
+        if (isTargetMe && nick.startsWith('+')) {
+          setNick(cleanTarget);
+        }
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} ยกเลิกสิทธิ์การพิมพ์เสียง (Mode -v) ของ ${cleanTarget}`, 'system');
+      } else if (command === 'TOPIC') {
+        if (currentRoom === 'Status' || currentRoom === 'MOTD') {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
+          return;
+        }
+        const newTopic = args.trim();
+        if (!newTopic) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `หัวข้อห้องแชทปัจจุบันคือ: ${rooms[currentRoom]?.topic || 'ไม่มี'}`, 'info');
+          return;
+        }
+
+        setRooms((prev) => {
+          const room = prev[currentRoom];
+          if (!room) return prev;
+          return {
+            ...prev,
+            [currentRoom]: {
+              ...room,
+              topic: newTopic,
+            },
+          };
+        });
+
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} เปลี่ยนหัวข้อห้องแชทเป็น: ${newTopic}`, 'system');
       } else if (command === 'QUIT') {
         addMessageToRoom(currentRoom, 'SYSTEM', 'กำลังส่งคำสั่ง QUIT เพื่อออกจากเซิร์ฟเวอร์...', 'system');
         setTimeout(() => {
@@ -1191,11 +1489,19 @@ export default function IRCClientSim({
         addMessageToRoom(currentRoom, 'SYSTEM', '/query ชื่อผู้ใช้ - เปิดห้องกระซิบคุยส่วนตัว PM', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/msg ชื่อผู้ใช้ ข้อความ - ส่งข้อความแชทส่วนตัวด่วน', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/nick ชื่อใหม่ - เปลี่ยนชื่อเล่นของคุณ', 'info');
-        addMessageToRoom(currentRoom, 'SYSTEM', '/kick ชื่อผู้ใช้ [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/leave หรือ /part - ออกจากห้องแชทปัจจุบัน', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/help - เปิดคู่มือคำสั่งช่วยเหลือนี้', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/me ข้อความการกระทำ - ส่งข้อความสถานะการกระทำ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '=== คำสั่งสำหรับผู้ดูแลห้องแชท (Operator Commands) ===', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/kick ชื่อผู้ใช้ [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/ban ชื่อผู้ใช้ - แบนผู้ใช้งานและเตะออก (ป้องกันไม่ให้กลับมาเข้าห้องอีก)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/unban ชื่อผู้ใช้ - ปลดแบนให้ผู้ใช้งาน', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/op ชื่อผู้ใช้ - มอบสิทธิ์ผู้ดูแลห้องแชท (@)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/deop ชื่อผู้ใช้ - ยกเลิกสิทธิ์ผู้ดูแลห้องแชท', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/voice ชื่อผู้ใช้ - มอบสิทธิ์การพูดคุย/พิมพ์ข้อความพิเศษ (+)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/devoice ชื่อผู้ใช้ - ยกเลิกสิทธิ์การพูดคุยพิเศษ (+)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/topic ข้อความหัวข้อใหม่ - เปลี่ยนแปลงหัวข้อห้องแชทปัจจุบัน', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '=== วิธีจัดรูปแบบอักษรและข้อความสีแบบ mIRC ===', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '^Bตัวหนา^B (หรือใช้ &B) | ^Uขีดเส้นใต้^U (หรือใช้ &U)', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '^Cตัวเลขสีอักษร - เช่น ^C4สีแดง ^C12สีฟ้า ^C3สีเขียว ^C9เขียวอ่อน', 'info');

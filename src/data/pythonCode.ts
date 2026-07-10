@@ -1201,6 +1201,15 @@ class PIRCHMainWindow(QMainWindow):
                 self.append_system_msg("  /nick ชื่อใหม่ - เปลี่ยนชื่อเล่นของคุณ")
                 self.append_system_msg("  /quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์")
                 self.append_system_msg("  /help - เปิดคู่มือคำสั่งช่วยเหลือนี้")
+                self.append_system_msg("^B[คำสั่งผู้ดูแลห้อง (Operator Commands)]^B")
+                self.append_system_msg("  /kick ชื่อเล่น [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท")
+                self.append_system_msg("  /ban ชื่อเล่น - ตั้งแบนผู้ใช้งาน")
+                self.append_system_msg("  /unban ชื่อเล่น - ปลดแบนให้ผู้ใช้งาน")
+                self.append_system_msg("  /op ชื่อเล่น - แต่งตั้งเป็นผู้ดูแลห้องแชท (@)")
+                self.append_system_msg("  /deop ชื่อเล่น - ยกเลิกสิทธิ์ผู้ดูแลห้องแชท")
+                self.append_system_msg("  /voice ชื่อเล่น - มอบสิทธิ์การพูดพิเศษ (+)")
+                self.append_system_msg("  /devoice ชื่อเล่น - ยกเลิกสิทธิ์การพูดพิเศษ")
+                self.append_system_msg("  /topic หัวข้อใหม่ - เปลี่ยนหัวข้อห้องแชท")
                 self.append_system_msg("^B[การจัดรูปแบบข้อความ mIRC]^B")
                 self.append_system_msg("  ^B^Bตัวหนา^B^B - พิมพ์ ^Bข้อความ^B หรือ &Bข้อความ&B")
                 self.append_system_msg("  ^U^Uขีดเส้นใต้^U^U - พิมพ์ ^Uข้อความ^U หรือ &Uข้อความ&U")
@@ -1210,6 +1219,34 @@ class PIRCHMainWindow(QMainWindow):
                 self.append_system_msg("    ^C0,1ขาวบนดำ^O | ^C4แดง^O | ^C3เขียว^O | ^C12ฟ้า^O | ^C6ม่วง^O | ^C7ส้ม^O | ^C8เหลือง^O")
                 self.append_system_msg("    ^C9เขียวอ่อน^O | ^C10ฟ้าอมเขียว^O | ^C11ฟ้าอ่อน^O | ^C13ชมพู^O | ^C14เทา^O")
                 self.append_system_msg("  ตัวอย่างการจัดสีและพื้นหลัง: พิมพ์ ^Cสีอักษร,สีพื้นหลัง เช่น ^C0,4สีขาวบนพื้นหลังสีแดง^O")
+            elif cmd == "KICK":
+                if args:
+                    parts = args.split(" ", 1)
+                    target = parts[0]
+                    reason = parts[1] if len(parts) > 1 else "Kicked by operator"
+                    if self.current_channel and self.irc_worker:
+                        self.irc_worker.send_line(f"KICK {self.current_channel} {target} :{reason}")
+            elif cmd == "BAN":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"MODE {self.current_channel} +b {args}")
+            elif cmd == "UNBAN":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"MODE {self.current_channel} -b {args}")
+            elif cmd == "OP":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"MODE {self.current_channel} +o {args}")
+            elif cmd == "DEOP":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"MODE {self.current_channel} -o {args}")
+            elif cmd == "VOICE":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"MODE {self.current_channel} +v {args}")
+            elif cmd == "DEVOICE":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"MODE {self.current_channel} -v {args}")
+            elif cmd == "TOPIC":
+                if args and self.current_channel and self.irc_worker:
+                    self.irc_worker.send_line(f"TOPIC {self.current_channel} :{args}")
             else:
                 # ส่ง Log คำสั่งไม่ถูกต้องไปยังหน้าจอแชทปัจจุบัน
                 current_idx = self.tab_widget.currentIndex()
