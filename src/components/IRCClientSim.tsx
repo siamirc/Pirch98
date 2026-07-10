@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff } from 'lucide-react';
+import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff, AtSign, MessageSquare } from 'lucide-react';
 import { IRCMessage, IRCChannel } from '../types';
 
 interface IRCClientSimProps {
@@ -66,6 +66,7 @@ export default function IRCClientSim({
   // Message input state
   const [inputValue, setInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   
   // Font size setting state (sm = small, md = medium, lg = large)
   const [fontSize, setFontSize] = useState<'sm' | 'md' | 'lg'>('md');
@@ -355,13 +356,25 @@ export default function IRCClientSim({
     text: string,
     type: IRCMessage['type'] = 'user'
   ) => {
+    // Intercept and route status/mode messages only to MOTD or Status tab
+    const isStatusOrMode = 
+      text.includes('[MODE]') || 
+      /\[\d{3}\]/.test(text) || 
+      text.includes('Current local users') || 
+      text.includes('Current global users');
+
+    let targetRoom = roomName;
+    if (isStatusOrMode) {
+      targetRoom = rooms['MOTD'] ? 'MOTD' : 'Status';
+    }
+
     const cleanCurrentNick = cleanNick(nick);
     const isMention = type === 'user' && 
                       cleanNick(sender) !== cleanCurrentNick && 
                       text.toLowerCase().includes(cleanCurrentNick.toLowerCase());
 
     const newMessage: IRCMessage = {
-      id: `${roomName}-${Date.now()}-${Math.random()}`,
+      id: `${targetRoom}-${Date.now()}-${Math.random()}`,
       timestamp: new Date().toLocaleTimeString(),
       sender,
       text,
@@ -374,17 +387,96 @@ export default function IRCClientSim({
     }
 
     setRooms((prev) => {
-      const room = prev[roomName];
+      // Fallback to Status if targetRoom not found
+      const actualRoom = prev[targetRoom] ? targetRoom : 'Status';
+      const room = prev[actualRoom];
       if (!room) return prev;
       return {
         ...prev,
-        [roomName]: {
+        [actualRoom]: {
           ...room,
           messages: [...room.messages, newMessage],
-          unreadCount: roomName !== currentRoom ? room.unreadCount + 1 : 0,
+          unreadCount: actualRoom !== currentRoom ? room.unreadCount + 1 : 0,
         },
       };
     });
+  };
+
+  // Create or retrieve a Private Message (PM) query room
+  const getOrCreatePMTab = (partnerNick: string, switchToIt = true) => {
+    const cleanPartner = cleanNick(partnerNick);
+    const pmRoomName = `💬 ${cleanPartner}`;
+    
+    setRooms((prev) => {
+      if (prev[pmRoomName]) return prev;
+      return {
+        ...prev,
+        [pmRoomName]: {
+          name: pmRoomName,
+          topic: `ข้อความส่วนตัว (Query/Private Message) คุยกับ ${cleanPartner}`,
+          users: [nick, `${cleanPartner}`],
+          messages: [
+            {
+              id: `pm-init-${Date.now()}`,
+              timestamp: new Date().toLocaleTimeString(),
+              sender: 'SYSTEM',
+              text: `*** เริ่มต้นคุยส่วนตัวแบบแชทลับกับ ${cleanPartner} เรียบร้อยแล้ว (สามารถพิมพ์ข้อความได้ด้านล่าง)`,
+              type: 'info',
+            }
+          ],
+          unreadCount: 0,
+        }
+      };
+    });
+
+    if (switchToIt) {
+      setCurrentRoom(pmRoomName);
+    }
+    return pmRoomName;
+  };
+
+  // Trigger a simulated delay response from bot when private messaging
+  const triggerSimulatedPMReply = (partner: string, userText: string) => {
+    const lowerText = userText.toLowerCase();
+    let replyText = '';
+    
+    if (partner === 'Python_Expert') {
+      if (lowerText.includes('pyqt') || lowerText.includes('qt')) {
+        replyText = 'ใช่เลยครับ! การเขียนโปรแกรม Chat GUI ด้วย PyQt6 แนะนำใช้ระบบ Signal-Slot ในการส่งผ่านข้อมูล จะลื่นไหลไม่สะดุด';
+      } else {
+        replyText = 'สวัสดีคุณแชทส่วนตัว มีอะไรคุยกับผมเรื่อง Python หรือ PyQt ได้ตลอดเวลาเลยนะยินดีช่วยเสมอ!';
+      }
+    } else if (partner === 'PyQt6_Fan') {
+      replyText = 'คุยส่วนตัวเหรอเนี่ยเขินจัง ฮ่าๆ ลองดูโค้ด Python ในแท็บ Code Viewer สิ มีโครงสร้างที่เข้าใจง่ายและปรับแก้เล่นได้ทันทีนะ!';
+    } else if (partner === 'ClassicChatter') {
+      replyText = 'การคุยส่วนตัว (Query) ใน IRC ยุค 90-2000 นี่มันคลาสสิกดีจริงนะ มีความเป็นส่วนตัวมากเลย คุยเรโทรสุดเพลิน!';
+    } else {
+      const pmQuotes = [
+        `ยินดีที่ได้แชทส่วนตัวด้วยนะคุณ ${nick}! ยินดีต้อนรับสู่มุมคุยเล่นแบบ VIP`,
+        `ข้อความนี้กระซิบแบบปลอดภัยผ่านระบบ Private Query เลย มีความสุขที่ได้คุยครับ!`,
+        `สวัสดีครับ ผมเป็นบอทจำลองแชทอัตโนมัติ ยินดีที่คุยกันนะครับ!`,
+        `พิมพ์เก่งจังครับ คุยในเซิร์ฟเวอร์จำลองกับผมแบบนี้เรโทรน่าดูเลยเนอะ`
+      ];
+      replyText = pmQuotes[Math.floor(Math.random() * pmQuotes.length)];
+    }
+
+    const pmRoomName = `💬 ${partner}`;
+    setTimeout(() => {
+      addMessageToRoom(pmRoomName, partner, replyText, 'user');
+    }, 1000 + Math.random() * 1000);
+  };
+
+  // Append a user's tag correctly in the chat input
+  const handleTagUser = (tagNick: string) => {
+    const cleanN = cleanNick(tagNick);
+    if (cleanN.toLowerCase() === cleanNick(nick).toLowerCase()) return;
+    
+    setInputValue((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed.includes(`@${cleanN}`)) return prev;
+      return trimmed ? `${trimmed} @${cleanN} ` : `@${cleanN} `;
+    });
+    chatInputRef.current?.focus();
   };
 
   // Simulate IRC connection sequence
@@ -542,6 +634,33 @@ export default function IRCClientSim({
           return;
         }
         joinChannel(args);
+      } else if (command === 'QUERY') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อผู้ใช้งาน เช่น /query Somchai', 'error');
+          return;
+        }
+        if (!isConnected) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาทำการเชื่อมต่อเซิร์ฟเวอร์ก่อน!', 'error');
+          return;
+        }
+        getOrCreatePMTab(args);
+      } else if (command === 'MSG') {
+        const cmdParts = args.split(' ');
+        const targetNick = cmdParts[0];
+        const msgText = cmdParts.slice(1).join(' ');
+
+        if (!targetNick || !msgText) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อผู้ใช้และข้อความ เช่น /msg Somchai สวัสดี', 'error');
+          return;
+        }
+        if (!isConnected) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาทำการเชื่อมต่อเซิร์ฟเวอร์ก่อน!', 'error');
+          return;
+        }
+
+        const pmRoomName = getOrCreatePMTab(targetNick, true);
+        addMessageToRoom(pmRoomName, nick, msgText, 'user');
+        triggerSimulatedPMReply(targetNick, msgText);
       } else if (command === 'NICK') {
         if (!args) {
           addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นใหม่ เช่น /nick NewNick', 'error');
@@ -638,6 +757,8 @@ export default function IRCClientSim({
       } else if (command === 'HELP') {
         addMessageToRoom(currentRoom, 'SYSTEM', '=== คำสั่ง IRC จำลองที่รองรับในระบบ ===', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/join #ชื่อห้อง - เข้าร่วมห้องแชทใหม่', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/query ชื่อผู้ใช้ - เปิดห้องกระซิบคุยส่วนตัว PM', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/msg ชื่อผู้ใช้ ข้อความ - ส่งข้อความแชทส่วนตัวด่วน', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/nick ชื่อใหม่ - เปลี่ยนชื่อเล่นของคุณ', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/kick ชื่อผู้ใช้ [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/leave หรือ /part - ออกจากห้องแชทปัจจุบัน', 'info');
@@ -664,30 +785,35 @@ export default function IRCClientSim({
 
     addMessageToRoom(currentRoom, nick, text, 'user');
 
-    // Bot Response trigger
-    const lowerText = text.toLowerCase();
-    let replyText = '';
-    let chosenBot = simulatedBotNicks[Math.floor(Math.random() * simulatedBotNicks.length)];
+    if (currentRoom.startsWith('💬 ')) {
+      const partner = currentRoom.replace('💬 ', '');
+      triggerSimulatedPMReply(partner, text);
+    } else {
+      // Bot Response trigger
+      const lowerText = text.toLowerCase();
+      let replyText = '';
+      let chosenBot = simulatedBotNicks[Math.floor(Math.random() * simulatedBotNicks.length)];
 
-    if (lowerText.includes('hello') || lowerText.includes('สวัสดี') || lowerText.includes('หวัดดี')) {
-      const template = greetingReplies[Math.floor(Math.random() * greetingReplies.length)];
-      replyText = template.replace('{user}', nick);
-      chosenBot = 'ClassicChatter';
-    } else if (lowerText.includes('pyqt') || lowerText.includes('pyqt6') || lowerText.includes('qt')) {
-      replyText = pyqtReplies[Math.floor(Math.random() * pyqtReplies.length)];
-      chosenBot = 'Python_Expert';
-    } else if (lowerText.includes('thread') || lowerText.includes('เธรด') || lowerText.includes('ค้าง')) {
-      replyText = threadReplies[Math.floor(Math.random() * threadReplies.length)];
-      chosenBot = 'PyQt6_Fan';
-    } else if (lowerText.includes('pich') || lowerText.includes('pirch') || lowerText.includes('mirc')) {
-      replyText = 'pIRCH98 ถือว่าเป็นโปรแกรม IRC ในตำนานของไทยเลยแหละ สมัยอินเทอร์เน็ตบ้าน 56k ใครๆ ก็ต้องเปิดช่อง #วัยรุ่น #สยามคุยกัน!';
-      chosenBot = 'RetroUser';
-    }
+      if (lowerText.includes('hello') || lowerText.includes('สวัสดี') || lowerText.includes('หวัดดี')) {
+        const template = greetingReplies[Math.floor(Math.random() * greetingReplies.length)];
+        replyText = template.replace('{user}', nick);
+        chosenBot = 'ClassicChatter';
+      } else if (lowerText.includes('pyqt') || lowerText.includes('pyqt6') || lowerText.includes('qt')) {
+        replyText = pyqtReplies[Math.floor(Math.random() * pyqtReplies.length)];
+        chosenBot = 'Python_Expert';
+      } else if (lowerText.includes('thread') || lowerText.includes('เธรด') || lowerText.includes('ค้าง')) {
+        replyText = threadReplies[Math.floor(Math.random() * threadReplies.length)];
+        chosenBot = 'PyQt6_Fan';
+      } else if (lowerText.includes('pich') || lowerText.includes('pirch') || lowerText.includes('mirc')) {
+        replyText = 'pIRCH98 ถือว่าเป็นโปรแกรม IRC ในตำนานของไทยเลยแหละ สมัยอินเทอร์เน็ตบ้าน 56k ใครๆ ก็ต้องเปิดช่อง #วัยรุ่น #สยามคุยกัน!';
+        chosenBot = 'RetroUser';
+      }
 
-    if (replyText) {
-      setTimeout(() => {
-        addMessageToRoom(currentRoom, chosenBot, replyText, 'user');
-      }, 1000 + Math.random() * 1000); // 1-2 sec response delay (natural feel)
+      if (replyText) {
+        setTimeout(() => {
+          addMessageToRoom(currentRoom, chosenBot, replyText, 'user');
+        }, 1000 + Math.random() * 1000); // 1-2 sec response delay (natural feel)
+      }
     }
   };
 
@@ -1037,7 +1163,7 @@ export default function IRCClientSim({
           const roomObj = rooms[roomName];
           const isSelected = roomName === currentRoom;
           return (
-            <button
+            <div
               key={roomName}
               onClick={() => {
                 setCurrentRoom(roomName);
@@ -1047,25 +1173,43 @@ export default function IRCClientSim({
                   [roomName]: { ...prev[roomName], unreadCount: 0 },
                 }));
               }}
-              className={`px-3.5 py-1 font-sans text-xs font-semibold rounded-md transition-all relative cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1 font-sans text-xs font-semibold rounded-md transition-all relative cursor-pointer ${
                 isSelected
-                  ? 'bg-indigo-600 text-white shadow-sm font-bold'
+                  ? 'bg-indigo-600 text-white shadow-sm font-bold animate-fade-in'
                   : isDarkMode
                   ? 'bg-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                   : 'bg-transparent text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
               }`}
-              id={`tab-channel-${roomName.replace('#', '')}`}
+              id={`tab-channel-${roomName.replace('#', '').replace('💬 ', 'pm_')}`}
             >
-              <span>
+              <span className="select-none flex items-center gap-1">
                 {roomName}
                 {roomName.startsWith('#') && roomObj.users && roomObj.users.length > 0 && ` (${roomObj.users.length})`}
               </span>
               {roomObj.unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full text-[8px] font-bold px-1 py-0.5 animate-bounce shadow">
+                <span className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full text-[8px] font-bold px-1.5 py-0.5 animate-bounce shadow">
                   {roomObj.unreadCount}
                 </span>
               )}
-            </button>
+              {roomName !== 'Status' && roomName !== 'MOTD' && (
+                <span 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Close/remove room
+                    setCurrentRoom('Status');
+                    setRooms((prev) => {
+                      const copy = { ...prev };
+                      delete copy[roomName];
+                      return copy;
+                    });
+                  }}
+                  className={`ml-1 hover:bg-black/10 dark:hover:bg-white/10 rounded-full w-4 h-4 flex items-center justify-center text-[11px] leading-none text-slate-400 hover:text-rose-500 transition-colors`}
+                  title="Close tab"
+                >
+                  ×
+                </span>
+              )}
+            </div>
           );
         })}
       </div>
@@ -1119,11 +1263,20 @@ export default function IRCClientSim({
                 {/* 3. Sender / Icon Column */}
                 <div className="w-24 shrink-0 text-right pr-1 select-none font-bold truncate">
                   {isUserMsg ? (
-                    <span className={
-                      msg.isMention && mentionNotify
-                        ? 'text-amber-500 font-extrabold'
-                        : isDarkMode ? 'text-indigo-400' : 'text-indigo-600'
-                    }>
+                    <span 
+                      onClick={() => {
+                        const isMe = cleanNick(msg.sender) === cleanNick(nick);
+                        if (!isMe) handleTagUser(msg.sender);
+                      }}
+                      className={`cursor-pointer transition-colors ${
+                        msg.isMention && mentionNotify
+                          ? 'text-amber-500 font-extrabold hover:text-amber-400'
+                          : isDarkMode 
+                          ? 'text-indigo-400 hover:text-indigo-300' 
+                          : 'text-indigo-600 hover:text-indigo-700'
+                      }`}
+                      title={cleanNick(msg.sender) !== cleanNick(nick) ? `คลิกเพื่อแทกชื่อ @${cleanNick(msg.sender)}` : undefined}
+                    >
                       {msg.sender}
                     </span>
                   ) : (
@@ -1203,21 +1356,58 @@ export default function IRCClientSim({
                   return (
                     <div
                        key={username}
-                       className={`px-2 py-1 rounded-md flex items-center justify-between font-sans transition-colors ${
-                         isMe
-                           ? isDarkMode
-                             ? 'bg-indigo-950/60 text-indigo-300 font-bold'
-                             : 'bg-indigo-50 text-indigo-700 font-bold'
-                           : isDarkMode
-                           ? 'text-slate-300 hover:bg-slate-800'
-                           : 'text-slate-700 hover:bg-slate-50'
-                       }`}
+                       className={`px-2 py-1 rounded-md flex items-center justify-between font-sans transition-all group hover:bg-slate-500/5 cursor-pointer`}
+                       title={isMe ? undefined : "ดับเบิ้ลคลิกเพื่อคุยส่วนตัว หรือกดปุ่มด้านขวา"}
+                       onDoubleClick={() => !isMe && getOrCreatePMTab(displayNick)}
                     >
-                      <span className="truncate">
+                      <span 
+                        onClick={() => !isMe && handleTagUser(displayNick)}
+                        className={`truncate flex-1 select-none font-medium ${
+                          isMe
+                            ? isDarkMode
+                              ? 'text-indigo-300 font-bold'
+                              : 'text-indigo-700 font-bold'
+                            : isDarkMode
+                            ? 'text-slate-300 hover:text-indigo-400'
+                            : 'text-slate-700 hover:text-indigo-600'
+                        }`}
+                      >
                         {hasPrefix ? `${prefixChar}${displayNick}` : (isOp ? `@${displayNick}` : isVoice ? `+${displayNick}` : displayNick)}
                       </span>
+                      
+                      {!isMe && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTagUser(displayNick);
+                            }}
+                            className={`p-1 rounded hover:bg-indigo-600 hover:text-white transition-colors ${
+                              isDarkMode ? 'text-slate-400 bg-slate-900/50' : 'text-slate-500 bg-slate-50'
+                            }`}
+                            title={`แทกชื่อ @${displayNick}`}
+                          >
+                            <AtSign size={10} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              getOrCreatePMTab(displayNick);
+                            }}
+                            className={`p-1 rounded hover:bg-indigo-600 hover:text-white transition-colors ${
+                              isDarkMode ? 'text-slate-400 bg-slate-900/50' : 'text-slate-500 bg-slate-50'
+                            }`}
+                            title={`คุยส่วนตัว PM กับ ${displayNick}`}
+                          >
+                            <MessageSquare size={10} />
+                          </button>
+                        </div>
+                      )}
+
                       {isOp ? (
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded scale-90 shadow-sm ${
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded scale-90 shadow-sm shrink-0 group-hover:hidden ${
                           isDarkMode
                             ? 'text-rose-400 bg-rose-950/30 border border-rose-900/50'
                             : 'text-rose-600 bg-rose-50 border border-rose-100'
@@ -1225,7 +1415,7 @@ export default function IRCClientSim({
                           OP
                         </span>
                       ) : isVoice ? (
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded scale-90 shadow-sm ${
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded scale-90 shadow-sm shrink-0 group-hover:hidden ${
                           isDarkMode
                             ? 'text-amber-400 bg-amber-950/30 border border-amber-900/50'
                             : 'text-amber-600 bg-amber-50 border border-amber-100'
@@ -1246,6 +1436,7 @@ export default function IRCClientSim({
         isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
       }`}>
         <input
+          ref={chatInputRef}
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
