@@ -22,6 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install PyQt6 pyinstaller
         pip install pyinstaller
         # ถ้าโปรแกรมของคุณมี Library อื่นๆ ที่ต้องใช้ ให้พิมพ์ pip install เพิ่มต่อตรงนี้ได้เลยครับ
 
