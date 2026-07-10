@@ -155,7 +155,7 @@ class PIRCHMainWindow(QMainWindow):
         
         # เริ่มสร้างส่วนติดต่อผู้ใช้ (UI)
         self.init_ui()
-        self.apply_classic_style()
+        self.apply_modern_style()
 
     def init_ui(self):
         # Widget หลัก
@@ -216,12 +216,13 @@ class PIRCHMainWindow(QMainWindow):
         self.chat_display = QTextBrowser()
         self.chat_display.setObjectName("ChatDisplay")
         self.chat_display.setOpenExternalLinks(True)
-        # ใส่ Welcome Message ในหน้าต่างแชทสไตล์ดั้งเดิม
+        # ใส่ Welcome Message สไตล์โมเดิร์น
         self.chat_display.append(
-            "<font color='#000080'>*** ยินดีต้อนรับสู่ pyIRCH98 Client พัฒนาด้วย PyQt6 ***</font><br>"
-            "<font color='#008000'>* ระบบ Threading พร้อมทำงานอย่างราบรื่น ไม่ค้างแน่นอน!</font><br>"
-            "<font color='#808080'>* พิมพ์คำสั่งอย่างเป็นทางการ เช่น /join #channel หรือ /nick newname ได้ที่ช่องด้านล่าง</font><br>"
-            "--------------------------------------------------------------------------------"
+            "<div style='margin-bottom: 8px;'><span style='color: #818cf8; font-weight: bold; font-size: 14px;'>🚀 ยินดีต้อนรับสู่ pyIRCH98 Client (Modern UI Edition)</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #34d399; font-weight: bold;'>✔ ระบบแยกเธรด (Multithreading) ทำงานเบื้องหลังด้วย QThread ไม่ค้าง 100%</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #94a3b8;'>✔ ออกแบบอินเตอร์เฟสใหม่หมดจดสไตล์พรีเมียม โค้งมน ทันสมัย มีมิติ</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #f472b6;'>✔ ลองพิมพ์แชทจำลองคุยกับบอท หรือใช้คำสั่ง เช่น /join #room, /nick name ได้ทันที</span></div>"
+            "<hr style='border-color: #334155; margin: 10px 0;'>"
         )
         splitter.addWidget(self.chat_display)
 
@@ -355,13 +356,15 @@ class PIRCHMainWindow(QMainWindow):
         self.current_channel = ""
 
     def append_system_msg(self, text):
-        """ เพิ่มข้อความระบบสไตล์ pIRCH ลงหน้าจอแชท """
-        self.chat_display.append(f"<font color='#008080'>* {text}</font>")
+        """ เพิ่มข้อความระบบสไตล์โมเดิร์นลงหน้าจอแชท """
+        self.chat_display.append(f"<span style='color: #38bdf8;'>• {text}</span>")
 
     def on_message_received(self, target, nick, message):
-        """ เมื่อได้รับข้อความแชทจากผู้อื่น """
-        # จัดรูปแบบข้อความแชทให้สวยงาม
-        msg_html = f"<b><font color='#000080'>&lt;{nick}&gt;</font></b> {message}"
+        """ เมื่อได้รับข้อความแชท """
+        is_me = nick == self.nick_input.text().strip()
+        nick_color = "#818cf8" if is_me else "#34d399"
+        text_color = "#f8fafc" if is_me else "#e2e8f0"
+        msg_html = f"<div style='margin: 2px 0;'><b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
         self.chat_display.append(msg_html)
 
     def on_user_joined(self, channel, nick):
@@ -369,7 +372,7 @@ class PIRCHMainWindow(QMainWindow):
         self.append_system_msg(f"<b>{nick}</b> ได้เข้าสู่ห้อง {channel}")
         if nick == self.nick_input.text().strip():
             self.current_channel = channel
-            self.chat_display.append(f"<font color='#008000'>*** ย้ายเข้าห้อง {channel} เรียบร้อยแล้ว</font>")
+            self.chat_display.append(f"<span style='color: #34d399; font-weight: bold;'>✔ ย้ายเข้าห้อง {channel} เรียบร้อยแล้ว</span>")
         
         # อัปเดตรายชื่อ (ส่งคำสั่ง NAMES เพื่อดึงข้อมูลรายชื่อใหม่)
         if self.irc_worker:
@@ -395,7 +398,7 @@ class PIRCHMainWindow(QMainWindow):
 
     def on_error(self, err_msg):
         """ จัดการกรณีเกิดข้อผิดพลาดขึ้นในเธรด socket """
-        self.chat_display.append(f"<font color='#FF0000'><b>[ข้อผิดพลาด]</b> {err_msg}</font>")
+        self.chat_display.append(f"<span style='color: #f87171;'><b>[ข้อผิดพลาด]</b> {err_msg}</span>")
         self.disconnect_irc()
 
     def send_message(self):
@@ -434,11 +437,11 @@ class PIRCHMainWindow(QMainWindow):
                 if args and self.irc_worker:
                     self.irc_worker.send_line(args)
             else:
-                self.chat_display.append(f"<font color='#FF0000'>* คำสั่ง /{cmd} ไม่รองรับในไคลเอนต์เบื้องต้นนี้</font>")
+                self.chat_display.append(f"<span style='color: #f87171;'>* คำสั่ง /{cmd} ไม่รองรับในไคลเอนต์เบื้องต้นนี้</span>")
         else:
             # ส่งแชทธรรมดาเข้าห้องแชทปัจจุบัน
             if not self.current_channel:
-                self.chat_display.append("<font color='#808080'>* กรุณาเข้าร่วมห้องแชทก่อนส่งข้อความ (พิมพ์ /join #ชื่อห้องแชท)</font>")
+                self.chat_display.append("<span style='color: #94a3b8;'>* กรุณาเข้าร่วมห้องแชทก่อนส่งข้อความ (พิมพ์ /join #ชื่อห้องแชท)</span>")
                 return
             
             if self.irc_worker:
@@ -448,80 +451,94 @@ class PIRCHMainWindow(QMainWindow):
                 my_nick = self.nick_input.text()
                 self.on_message_received(self.current_channel, my_nick, text)
 
-    def apply_classic_style(self):
-        """ ปรับแต่งหน้าตาโปรแกรมให้เป็นสไตล์ Windows 95 ดั้งเดิม (Retro gray UI) """
+    def apply_modern_style(self):
+        """ ปรับแต่งหน้าตาโปรแกรมให้เป็นสไตล์ Modern UI เกรดพรีเมียม """
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #d8d8d8;
+                background-color: #0f172a;
             }
             QLabel {
-                font-family: 'MS Sans Serif', 'Tahoma', 'Arial';
+                font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', 'Arial';
                 font-size: 11px;
-                color: #000000;
+                color: #94a3b8;
+                font-weight: bold;
             }
             #TopFrame {
-                background-color: #d8d8d8;
-                border-top: 2px solid #ffffff;
-                border-left: 2px solid #ffffff;
-                border-right: 2px solid #808080;
-                border-bottom: 2px solid #808080;
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 12px;
             }
             QLineEdit {
-                background-color: #ffffff;
-                border-top: 2px solid #808080;
-                border-left: 2px solid #808080;
-                border-right: 2px solid #ffffff;
-                border-bottom: 2px solid #ffffff;
-                font-family: 'Courier New', 'Monospace';
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 12px;
-                padding: 3px;
-                color: #000000;
+                padding: 6px 10px;
+                color: #f8fafc;
+            }
+            QLineEdit:focus {
+                border: 1px solid #6366f1;
             }
             QPushButton {
-                background-color: #d8d8d8;
-                border-top: 2px solid #ffffff;
-                border-left: 2px solid #ffffff;
-                border-right: 2px solid #808080;
-                border-bottom: 2px solid #808080;
-                font-family: 'Tahoma', 'Arial';
+                background-color: #6366f1;
+                border: none;
+                border-radius: 8px;
+                font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', 'Arial';
                 font-size: 11px;
                 font-weight: bold;
-                padding: 4px;
-                color: #000000;
+                padding: 6px 14px;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #4f46e5;
             }
             QPushButton:pressed {
-                border-top: 2px solid #808080;
-                border-left: 2px solid #808080;
-                border-right: 2px solid #ffffff;
-                border-bottom: 2px solid #ffffff;
-                padding-top: 5px;
-                padding-left: 5px;
+                background-color: #4338ca;
+            }
+            QPushButton:disabled {
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                color: #475569;
             }
             #ChatDisplay {
-                background-color: #ffffff;
-                border-top: 2px solid #808080;
-                border-left: 2px solid #808080;
-                border-right: 2px solid #ffffff;
-                border-bottom: 2px solid #ffffff;
-                font-family: 'Courier New', 'MS Sans Serif', 'Tahoma';
+                background-color: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 12px;
+                font-family: 'Consolas', 'Segoe UI', 'Courier New';
                 font-size: 12px;
-                color: #000000;
+                color: #f1f5f9;
+                padding: 12px;
             }
             #UserList {
-                background-color: #ffffff;
-                border-top: 2px solid #808080;
-                border-left: 2px solid #808080;
-                border-right: 2px solid #ffffff;
-                border-bottom: 2px solid #ffffff;
-                font-family: 'Tahoma', 'Arial';
+                background-color: #1e293b;
+                border: 1px solid #334155;
+                border-radius: 12px;
+                font-family: 'Segoe UI', 'Inter', 'Arial';
                 font-size: 11px;
-                color: #000000;
+                color: #cbd5e1;
+                padding: 6px;
+            }
+            QListWidget::item {
+                padding: 5px 8px;
+                border-radius: 6px;
+                color: #cbd5e1;
+            }
+            QListWidget::item:hover {
+                background-color: #334155;
+                color: #ffffff;
+            }
+            QListWidget::item:selected {
+                background-color: #6366f1;
+                color: #ffffff;
+                font-weight: bold;
             }
             QStatusBar {
-                background-color: #d8d8d8;
-                border-top: 1px solid #808080;
-                color: #303030;
+                background-color: #0f172a;
+                border-top: 1px solid #1e293b;
+                color: #64748b;
                 font-size: 11px;
+                font-family: 'Segoe UI', 'Inter', 'Arial';
             }
         """)
 

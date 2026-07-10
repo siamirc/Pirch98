@@ -10,7 +10,7 @@ interface IRCClientSimProps {
 
 export default function IRCClientSim({
   initialNick = 'pIRCH_Guest',
-  initialServer = 'irc.libera.chat',
+  initialServer = 'irc.thaiirc.com',
   initialChannel = '#pyqt6',
 }: IRCClientSimProps) {
   // Connection states
