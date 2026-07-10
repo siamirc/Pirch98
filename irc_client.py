@@ -18,6 +18,7 @@ class IRCWorker(QObject):
     # สร้าง Signals เพื่อส่งข้อมูลกลับไปยัง GUI Main Thread อย่างปลอดภัย
     connected = pyqtSignal()
     disconnected = pyqtSignal()
+    registered = pyqtSignal()                   # ลงทะเบียนสำเร็จ (ได้รับ 001)
     message_received = pyqtSignal(str, str, str) # (channel/sender, nick, message)
     system_message = pyqtSignal(str)            # ข้อความระบบ/Log
     user_joined = pyqtSignal(str, str)           # (channel, nick)
@@ -34,6 +35,11 @@ class IRCWorker(QObject):
         self.realname = realname
         self.socket = None
         self.is_running = False
+
+    def stop(self):
+        """ สั่งให้เธรดหยุดทำงานและทำความสะอาด """
+        self.is_running = False
+        self.cleanup()
 
     def run(self):
         """ ฟังก์ชันหลักที่จะรันในเธรดแยก """
@@ -101,6 +107,9 @@ class IRCWorker(QObject):
             
             if command == "PRIVMSG":
                 self.message_received.emit(target, sender_nick, params)
+            elif command == "001":
+                self.registered.emit()
+                self.system_message.emit(f"ลงทะเบียนสำเร็จ: {params}")
             elif command == "JOIN":
                 channel = target.lstrip(":")
                 self.user_joined.emit(channel, sender_nick)
@@ -177,8 +186,8 @@ class PIRCHMainWindow(QMainWindow):
 
         # ช่องใส่ Server
         top_layout.addWidget(QLabel("Server:"))
-        self.server_input = QLineEdit("irc.libera.chat")
-        self.server_input.setPlaceholderText("e.g. irc.libera.chat")
+        self.server_input = QLineEdit("irc.thaiirc.com")
+        self.server_input.setPlaceholderText("e.g. irc.thaiirc.com")
         top_layout.addWidget(self.server_input)
 
         # ช่องใส่ Port
@@ -216,13 +225,12 @@ class PIRCHMainWindow(QMainWindow):
         self.chat_display = QTextBrowser()
         self.chat_display.setObjectName("ChatDisplay")
         self.chat_display.setOpenExternalLinks(True)
-        # ใส่ Welcome Message สไตล์โมเดิร์น
+        # ใส่ Welcome Message สไตล์โมเดิร์น (สว่าง)
         self.chat_display.append(
-            "<div style='margin-bottom: 8px;'><span style='color: #818cf8; font-weight: bold; font-size: 14px;'>🚀 ยินดีต้อนรับสู่ pyIRCH98 Client (Modern UI Edition)</span></div>"
-            "<div style='margin-bottom: 4px;'><span style='color: #34d399; font-weight: bold;'>✔ ระบบแยกเธรด (Multithreading) ทำงานเบื้องหลังด้วย QThread ไม่ค้าง 100%</span></div>"
-            "<div style='margin-bottom: 4px;'><span style='color: #94a3b8;'>✔ ออกแบบอินเตอร์เฟสใหม่หมดจดสไตล์พรีเมียม โค้งมน ทันสมัย มีมิติ</span></div>"
-            "<div style='margin-bottom: 4px;'><span style='color: #f472b6;'>✔ ลองพิมพ์แชทจำลองคุยกับบอท หรือใช้คำสั่ง เช่น /join #room, /nick name ได้ทันที</span></div>"
-            "<hr style='border-color: #334155; margin: 10px 0;'>"
+            "<div style='margin-bottom: 8px;'><span style='color: #4f46e5; font-weight: bold; font-size: 14px;'>🚀 ยินดีต้อนรับสู่ pyIRCH98 Client (Modern Light Edition)</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #10b981; font-weight: bold;'>✔ ระบบแยกเธรด (Multithreading) ทำงานเบื้องหลังด้วย QThread ไม่ค้าง 100%</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #475569;'>✔ ออกแบบอินเตอร์เฟสใหม่หมดจดสไตล์พรีเมียม โค้งมน ทันสมัย ไร้เส้นกรอบกวนสายตา</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #ec4899; font-weight: bold;'>✔ ลองพิมพ์แชทจำลองคุยกับบอท หรือใช้คำสั่ง เช่น /join #room, /nick name ได้ทันที</span></div>"
         )
         splitter.addWidget(self.chat_display)
 
@@ -300,6 +308,7 @@ class PIRCHMainWindow(QMainWindow):
         self.irc_worker.user_joined.connect(self.on_user_joined)
         self.irc_worker.user_left.connect(self.on_user_left)
         self.irc_worker.user_list_received.connect(self.on_user_list)
+        self.irc_worker.registered.connect(self.on_irc_registered)
         self.irc_worker.error_occurred.connect(self.on_error)
         
         # เมื่อ Thread จบการทำงาน ให้ทำความสะอาดหน่วยความจำ
@@ -329,19 +338,20 @@ class PIRCHMainWindow(QMainWindow):
         """ ทำงานหลังจาก Socket ต่อติดเสร็จสิ้น """
         self.connect_btn.setText("Disconnect")
         self.connect_btn.setEnabled(True)
-        self.status_bar.showMessage("เชื่อมต่อสำเร็จ (Online)")
+        self.status_bar.showMessage("เชื่อมต่อแล้ว! กำลังลงทะเบียน Nickname กับเซิร์ฟเวอร์...")
         self.server_input.setEnabled(False)
         self.port_input.setEnabled(False)
         self.nick_input.setEnabled(False)
-        
+
+    def on_irc_registered(self):
+        """ ทำงานหลังจากลงทะเบียนสำเร็จ (ได้รับ 001) """
+        self.status_bar.showMessage("ลงทะเบียน Nickname สำเร็จ (Online)")
         # เข้าร่วมห้องแชทอัตโนมัติหากมีการระบุไว้
         auto_chan = self.channel_input.text().strip()
         if auto_chan:
             if not auto_chan.startswith("#"):
                 auto_chan = "#" + auto_chan
             self.current_channel = auto_chan
-            # หน่วงเวลาเล็กน้อยเพื่อให้เซิร์ฟเวอร์ลงทะเบียน Nick สำเร็จก่อนส่ง JOIN
-            QThread.msleep(500)
             self.irc_worker.send_line(f"JOIN {auto_chan}")
 
     def on_irc_disconnected(self):
@@ -357,14 +367,14 @@ class PIRCHMainWindow(QMainWindow):
 
     def append_system_msg(self, text):
         """ เพิ่มข้อความระบบสไตล์โมเดิร์นลงหน้าจอแชท """
-        self.chat_display.append(f"<span style='color: #38bdf8;'>• {text}</span>")
+        self.chat_display.append(f"<span style='color: #0891b2;'>• {text}</span>")
 
     def on_message_received(self, target, nick, message):
         """ เมื่อได้รับข้อความแชท """
         is_me = nick == self.nick_input.text().strip()
-        nick_color = "#818cf8" if is_me else "#34d399"
-        text_color = "#f8fafc" if is_me else "#e2e8f0"
-        msg_html = f"<div style='margin: 2px 0;'><b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
+        nick_color = "#4f46e5" if is_me else "#059669"
+        text_color = "#1e293b"
+        msg_html = f"<div style='margin: 3px 0;'><b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{message}</span></div>"
         self.chat_display.append(msg_html)
 
     def on_user_joined(self, channel, nick):
@@ -372,7 +382,7 @@ class PIRCHMainWindow(QMainWindow):
         self.append_system_msg(f"<b>{nick}</b> ได้เข้าสู่ห้อง {channel}")
         if nick == self.nick_input.text().strip():
             self.current_channel = channel
-            self.chat_display.append(f"<span style='color: #34d399; font-weight: bold;'>✔ ย้ายเข้าห้อง {channel} เรียบร้อยแล้ว</span>")
+            self.chat_display.append(f"<span style='color: #059669; font-weight: bold;'>✔ ย้ายเข้าห้อง {channel} เรียบร้อยแล้ว</span>")
         
         # อัปเดตรายชื่อ (ส่งคำสั่ง NAMES เพื่อดึงข้อมูลรายชื่อใหม่)
         if self.irc_worker:
@@ -452,30 +462,30 @@ class PIRCHMainWindow(QMainWindow):
                 self.on_message_received(self.current_channel, my_nick, text)
 
     def apply_modern_style(self):
-        """ ปรับแต่งหน้าตาโปรแกรมให้เป็นสไตล์ Modern UI เกรดพรีเมียม """
+        """ ปรับแต่งหน้าตาโปรแกรมให้เป็นสไตล์ Modern UI เกรดพรีเมียม (แบบใน Simulator) """
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #0f172a;
+                background-color: #f8fafc;
             }
             QLabel {
                 font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', 'Arial';
                 font-size: 11px;
-                color: #94a3b8;
+                color: #475569;
                 font-weight: bold;
             }
             #TopFrame {
-                background-color: #1e293b;
-                border: 1px solid #334155;
+                background-color: #f1f5f9;
+                border: none;
                 border-radius: 12px;
             }
             QLineEdit {
-                background-color: #0f172a;
-                border: 1px solid #334155;
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
                 border-radius: 8px;
-                font-family: 'Consolas', 'Courier New', monospace;
+                font-family: 'Segoe UI', 'Inter', 'Arial', monospace;
                 font-size: 12px;
                 padding: 6px 10px;
-                color: #f8fafc;
+                color: #1e293b;
             }
             QLineEdit:focus {
                 border: 1px solid #6366f1;
@@ -497,36 +507,36 @@ class PIRCHMainWindow(QMainWindow):
                 background-color: #4338ca;
             }
             QPushButton:disabled {
-                background-color: #1e293b;
-                border: 1px solid #334155;
-                color: #475569;
+                background-color: #e2e8f0;
+                border: none;
+                color: #94a3b8;
             }
             #ChatDisplay {
-                background-color: #0f172a;
-                border: 1px solid #334155;
+                background-color: #ffffff;
+                border: none;
                 border-radius: 12px;
-                font-family: 'Consolas', 'Segoe UI', 'Courier New';
+                font-family: 'Segoe UI', 'Inter', 'Arial';
                 font-size: 12px;
-                color: #f1f5f9;
+                color: #1e293b;
                 padding: 12px;
             }
             #UserList {
-                background-color: #1e293b;
-                border: 1px solid #334155;
+                background-color: #f1f5f9;
+                border: none;
                 border-radius: 12px;
                 font-family: 'Segoe UI', 'Inter', 'Arial';
                 font-size: 11px;
-                color: #cbd5e1;
+                color: #334155;
                 padding: 6px;
             }
             QListWidget::item {
                 padding: 5px 8px;
                 border-radius: 6px;
-                color: #cbd5e1;
+                color: #334155;
             }
             QListWidget::item:hover {
-                background-color: #334155;
-                color: #ffffff;
+                background-color: #e2e8f0;
+                color: #0f172a;
             }
             QListWidget::item:selected {
                 background-color: #6366f1;
@@ -534,11 +544,14 @@ class PIRCHMainWindow(QMainWindow):
                 font-weight: bold;
             }
             QStatusBar {
-                background-color: #0f172a;
-                border-top: 1px solid #1e293b;
+                background-color: #f8fafc;
+                border-top: none;
                 color: #64748b;
                 font-size: 11px;
                 font-family: 'Segoe UI', 'Inter', 'Arial';
+            }
+            QSplitter::handle {
+                background-color: transparent;
             }
         """)
 
