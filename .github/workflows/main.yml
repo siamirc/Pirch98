@@ -27,7 +27,7 @@ jobs:
 
     - name: Build Executable with PyInstaller
       run: |
-        pyinstaller --noconsole --onefile main.py
+        pyinstaller --noconsole --onefile irc_client.py
         # หมายเหตุ: ถ้าไฟล์หลักของคุณไม่ได้ชื่อ main.py ให้เปลี่ยนคำว่า main.py เป็นชื่อไฟล์ของคุณนะครับ
 
     - name: Upload Windows Executable artifact
