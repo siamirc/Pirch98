@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Send, Info, Users, HelpCircle } from 'lucide-react';
+import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon } from 'lucide-react';
 import { IRCMessage, IRCChannel } from '../types';
 
 interface IRCClientSimProps {
@@ -20,6 +20,7 @@ export default function IRCClientSim({
   const [targetChannel, setTargetChannel] = useState(initialChannel);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
   // Chat log state
   const [currentRoom, setCurrentRoom] = useState<string>('Status');
@@ -189,10 +190,37 @@ export default function IRCClientSim({
     }, 1500);
 
     setTimeout(() => {
-      addMessageToRoom('Status', 'SYSTEM', `ต้อนรับเข้าระบบ (RPL_WELCOME 001): ยินดีต้อนรับเข้าสู่เครือข่าย IRC!`, 'motd');
-      addMessageToRoom('Status', 'SYSTEM', `[MOTD] - ยินดีต้อนรับสู่เซิร์ฟเวอร์ IRC จำลองความเสถียรสูง`, 'motd');
-      addMessageToRoom('Status', 'SYSTEM', `[MOTD] - พัฒนาจำลองขึ้นมาเพื่อให้ทดสอบ UI pIRCH และช่วยทำโค้ด PyQt6 ติดตั้งได้สะดวก`, 'motd');
-      addMessageToRoom('Status', 'SYSTEM', `[MOTD] - เธรดเครือข่ายถูกแยกไว้ในคลาส IRCWorker เรียบร้อยแล้ว`, 'motd');
+      // Create MOTD room tab dynamically
+      setRooms((prev) => {
+        if (prev['MOTD']) return prev;
+        return {
+          ...prev,
+          MOTD: {
+            name: 'MOTD',
+            topic: 'Message of the Day (MOTD) from Server',
+            users: [],
+            messages: [
+              {
+                id: `motd-header-${Date.now()}`,
+                timestamp: new Date().toLocaleTimeString(),
+                sender: 'SYSTEM',
+                text: '=== MESSAGE OF THE DAY ===',
+                type: 'info',
+              },
+            ],
+            unreadCount: 0,
+          },
+        };
+      });
+
+      // Send MOTD messages into MOTD room
+      addMessageToRoom('MOTD', 'SYSTEM', `ต้อนรับเข้าระบบ (RPL_WELCOME 001): ยินดีต้อนรับเข้าสู่เครือข่าย IRC!`, 'motd');
+      addMessageToRoom('MOTD', 'SYSTEM', `[MOTD] - ยินดีต้อนรับสู่เซิร์ฟเวอร์ IRC จำลองความเสถียรสูง`, 'motd');
+      addMessageToRoom('MOTD', 'SYSTEM', `[MOTD] - พัฒนาจำลองขึ้นมาเพื่อให้ทดสอบ UI pIRCH และช่วยทำโค้ด PyQt6 ติดตั้งได้สะดวก`, 'motd');
+      addMessageToRoom('MOTD', 'SYSTEM', `[MOTD] - เธรดเครือข่ายถูกแยกไว้ในคลาส IRCWorker เรียบร้อยแล้ว`, 'motd');
+
+      // Notify user in Status room
+      addMessageToRoom('Status', 'SYSTEM', `ได้รับ Message of the Day (MOTD) เรียบร้อยแล้ว (เปิดดูได้ที่แท็บ MOTD ด้านบน)`, 'system');
     }, 2200);
 
     setTimeout(() => {
@@ -359,105 +387,163 @@ export default function IRCClientSim({
   };
 
   const getMessageColorClass = (type: IRCMessage['type']) => {
-    switch (type) {
-      case 'system':
-        return 'text-[#008080] font-bold'; // Teal system
-      case 'error':
-        return 'text-[#ff0000] font-bold'; // Red error
-      case 'motd':
-        return 'text-[#800080]'; // Purple MOTD messages
-      case 'join':
-        return 'text-[#008000] font-semibold'; // Green joins
-      case 'part':
-        return 'text-[#808000]'; // Olive parts
-      case 'info':
-        return 'text-[#0000ff] font-sans italic'; // Blue system outputs
-      default:
-        return 'text-black'; // Black user messages
+    if (isDarkMode) {
+      switch (type) {
+        case 'system':
+          return 'text-[#14b8a6] font-bold'; // Teal system (Teal-500)
+        case 'error':
+          return 'text-[#ef4444] font-bold'; // Red error (Red-500)
+        case 'motd':
+          return 'text-[#d946ef]'; // Fuchsia MOTD (Fuchsia-500)
+        case 'join':
+          return 'text-[#22c55e] font-semibold'; // Green joins (Green-500)
+        case 'part':
+          return 'text-[#eab308]'; // Yellow parts (Yellow-500)
+        case 'info':
+          return 'text-[#60a5fa] font-sans italic'; // Blue system outputs (Blue-400)
+        default:
+          return 'text-slate-200'; // Light user messages
+      }
+    } else {
+      switch (type) {
+        case 'system':
+          return 'text-[#008080] font-bold'; // Teal system
+        case 'error':
+          return 'text-[#ff0000] font-bold'; // Red error
+        case 'motd':
+          return 'text-[#800080]'; // Purple MOTD messages
+        case 'join':
+          return 'text-[#008000] font-semibold'; // Green joins
+        case 'part':
+          return 'text-[#808000]'; // Olive parts
+        case 'info':
+          return 'text-[#0000ff] font-sans italic'; // Blue system outputs
+        default:
+          return 'text-black'; // Black user messages
+      }
     }
   };
 
   const activeRoomData = rooms[currentRoom] || { messages: [], users: [] };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 text-slate-800 win95-font">
+    <div className={`flex flex-col h-full win95-font transition-colors ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       {/* 1. Top Input Panel (pIRCH layout - modern premium form style) */}
-      <div className="bg-slate-100 border-b border-slate-200/80 p-2.5 flex flex-wrap gap-3 items-center mb-0.5 rounded-t-lg shadow-sm">
+      <div className={`p-2.5 flex flex-wrap gap-3 items-center mb-0.5 rounded-t-lg shadow-sm border-b transition-colors ${
+        isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-slate-100 border-slate-200/80 text-slate-700'
+      }`}>
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold whitespace-nowrap text-xs text-slate-600">Server:</span>
+          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Server:</span>
           <input
             type="text"
             value={server}
             onChange={(e) => !isConnected && !isConnecting && setServer(e.target.value)}
             disabled={isConnected || isConnecting}
-            className="bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 px-2.5 py-1 w-[140px] text-xs outline-none font-mono rounded-md disabled:bg-slate-50 disabled:text-slate-400 transition-all shadow-sm"
+            className={`px-2.5 py-1 w-[140px] text-xs outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
+              isDarkMode
+                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+            }`}
           />
         </div>
 
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold whitespace-nowrap text-xs text-slate-600">Port:</span>
+          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Port:</span>
           <input
             type="text"
             value={port}
             onChange={(e) => !isConnected && !isConnecting && setPort(e.target.value)}
             disabled={isConnected || isConnecting}
-            className="bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 px-2 py-1 w-[45px] text-xs text-center outline-none font-mono rounded-md disabled:bg-slate-50 disabled:text-slate-400 transition-all shadow-sm"
+            className={`py-1 w-[45px] text-xs text-center outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
+              isDarkMode
+                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+            }`}
           />
         </div>
 
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold whitespace-nowrap text-xs text-slate-600">Nick:</span>
+          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Nick:</span>
           <input
             type="text"
             value={nick}
             onChange={(e) => !isConnecting && setNick(e.target.value)}
             disabled={isConnecting}
-            className="bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 px-2.5 py-1 w-[110px] text-xs outline-none font-mono rounded-md disabled:bg-slate-50 disabled:text-slate-400 transition-all shadow-sm"
+            className={`px-2.5 py-1 w-[110px] text-xs outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
+              isDarkMode
+                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+            }`}
           />
         </div>
 
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold whitespace-nowrap text-xs text-slate-600">Join Chan:</span>
+          <span className={`font-semibold whitespace-nowrap text-xs transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>Join Chan:</span>
           <input
             type="text"
             value={targetChannel}
             onChange={(e) => !isConnected && !isConnecting && setTargetChannel(e.target.value)}
             disabled={isConnected || isConnecting}
             placeholder="#channel"
-            className="bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 px-2.5 py-1 w-[80px] text-xs outline-none font-mono rounded-md disabled:bg-slate-50 disabled:text-slate-400 transition-all shadow-sm"
+            className={`px-2.5 py-1 w-[80px] text-xs outline-none font-mono rounded-md transition-all shadow-sm focus:ring-1 ${
+              isDarkMode
+                ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+                : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400'
+            }`}
           />
         </div>
 
-        <button
-          onClick={handleConnect}
-          disabled={isConnecting}
-          className={`flex items-center justify-center gap-1.5 px-4.5 py-1.5 text-xs font-bold ml-auto min-w-[100px] rounded-lg border transition-all duration-150 active:scale-95 disabled:scale-100 cursor-pointer disabled:cursor-not-allowed ${
-            isConnecting
-              ? 'bg-slate-100 text-slate-400 border-slate-200'
-              : isConnected
-              ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200 shadow-sm'
-              : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent shadow-sm hover:shadow-indigo-500/10'
-          }`}
-          id="btn-irc-connect-sim"
-        >
-          {isConnecting ? (
-            <span className="animate-pulse">Connecting...</span>
-          ) : isConnected ? (
-            <>
-              <Square size={11} className="fill-current text-red-600" />
-              <span>Disconnect</span>
-            </>
-          ) : (
-            <>
-              <Play size={11} className="fill-current text-white" />
-              <span>Connect</span>
-            </>
-          )}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Dark/Light mode theme switch */}
+          <button
+            type="button"
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`flex items-center justify-center p-1.5 rounded-lg border transition-all duration-150 active:scale-95 cursor-pointer shadow-sm ${
+              isDarkMode
+                ? 'bg-slate-800 text-amber-400 border-slate-700 hover:bg-slate-700'
+                : 'bg-white text-indigo-600 border-slate-200 hover:bg-slate-50'
+            }`}
+            title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            id="btn-irc-theme-toggle"
+          >
+            {isDarkMode ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
+
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className={`flex items-center justify-center gap-1.5 px-4.5 py-1.5 text-xs font-bold min-w-[100px] rounded-lg border transition-all duration-150 active:scale-95 disabled:scale-100 cursor-pointer disabled:cursor-not-allowed ${
+              isConnecting
+                ? 'bg-slate-100 text-slate-400 border-slate-200'
+                : isConnected
+                ? isDarkMode
+                  ? 'bg-red-950/40 hover:bg-red-950/60 text-red-400 border-red-900/50 shadow-sm'
+                  : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200 shadow-sm'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent shadow-sm hover:shadow-indigo-500/10'
+            }`}
+            id="btn-irc-connect-sim"
+          >
+            {isConnecting ? (
+              <span className="animate-pulse">Connecting...</span>
+            ) : isConnected ? (
+              <>
+                <Square size={11} className="fill-current text-red-500" />
+                <span>Disconnect</span>
+              </>
+            ) : (
+              <>
+                <Play size={11} className="fill-current text-white" />
+                <span>Connect</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 2. Channel Rooms Selector Tabs (Segmented bar style) */}
-      <div className="flex bg-slate-100 border-b border-slate-200 p-1.5 gap-1 overflow-x-auto select-none">
+      <div className={`flex p-1.5 gap-1 overflow-x-auto select-none border-b transition-colors ${
+        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+      }`}>
         {Object.keys(rooms).map((roomName) => {
           const roomObj = rooms[roomName];
           const isSelected = roomName === currentRoom;
@@ -475,11 +561,16 @@ export default function IRCClientSim({
               className={`px-3.5 py-1 font-sans text-xs font-semibold rounded-md transition-all relative cursor-pointer ${
                 isSelected
                   ? 'bg-indigo-600 text-white shadow-sm font-bold'
+                  : isDarkMode
+                  ? 'bg-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                   : 'bg-transparent text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
               }`}
               id={`tab-channel-${roomName.replace('#', '')}`}
             >
-              <span>{roomName}</span>
+              <span>
+                {roomName}
+                {roomName.startsWith('#') && roomObj.users && roomObj.users.length > 0 && ` (${roomObj.users.length})`}
+              </span>
               {roomObj.unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full text-[8px] font-bold px-1 py-0.5 animate-bounce shadow">
                   {roomObj.unreadCount}
@@ -491,25 +582,33 @@ export default function IRCClientSim({
       </div>
 
       {/* 3. Room Topic bar */}
-      <div className="bg-slate-50 border-b border-slate-200/60 py-1.5 px-3 flex items-center gap-2 text-xs text-slate-500">
+      <div className={`py-1.5 px-3 flex items-center gap-2 text-xs border-b transition-colors ${
+        isDarkMode ? 'bg-slate-950 border-slate-900 text-slate-400' : 'bg-slate-50 border-slate-200/60 text-slate-500'
+      }`}>
         <Info size={13} className="text-indigo-500 shrink-0" />
         <span className="font-medium truncate">
-          Topic: <span className="text-slate-700 font-normal">{activeRoomData.topic || 'No topic is set for this window'}</span>
+          Topic: <span className={`font-normal transition-colors ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{activeRoomData.topic || 'No topic is set for this window'}</span>
         </span>
       </div>
 
       {/* 4. Chat Workspace & Nick List Panel (Split View) */}
-      <div className="flex-1 min-h-0 flex gap-2 p-2 bg-slate-100">
+      <div className={`flex-1 min-h-0 flex gap-2 p-2 transition-colors ${isDarkMode ? 'bg-slate-900' : 'bg-slate-100'}`}>
         {/* Chat window */}
-        <div className="flex-1 min-h-0 bg-white border border-slate-200/80 rounded-lg p-3.5 overflow-y-auto flex flex-col gap-1.5 font-mono text-[13px] leading-relaxed shadow-inner select-text">
+        <div className={`flex-1 min-h-0 border rounded-lg p-3.5 overflow-y-auto flex flex-col gap-1.5 font-mono text-[13px] leading-relaxed shadow-inner select-text transition-colors ${
+          isDarkMode ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-200/80 text-slate-800'
+        }`}>
           {activeRoomData.messages.map((msg) => (
-            <div key={msg.id} className="flex gap-2 items-start hover:bg-slate-50/50 py-0.5 rounded px-1 transition-colors">
-              <span className="text-slate-400 select-none text-[11px] pt-0.5 font-sans font-medium">[{msg.timestamp}]</span>
+            <div key={msg.id} className={`flex gap-2 items-start py-0.5 rounded px-1 transition-colors ${
+              isDarkMode ? 'hover:bg-slate-900/40' : 'hover:bg-slate-50/50'
+            }`}>
+              <span className={`select-none text-[11px] pt-0.5 font-sans font-medium transition-colors ${
+                isDarkMode ? 'text-slate-600' : 'text-slate-400'
+              }`}>[{msg.timestamp}]</span>
               <div className="flex-1">
                 {msg.type === 'user' ? (
                   <span>
-                    <strong className="text-indigo-600 font-bold mr-1.5">&lt;{msg.sender}&gt;</strong>
-                    <span className="text-slate-800 whitespace-pre-wrap">{msg.text}</span>
+                    <strong className={`font-bold mr-1.5 transition-colors ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>&lt;{msg.sender}&gt;</strong>
+                    <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{msg.text}</span>
                   </span>
                 ) : (
                   <span className={getMessageColorClass(msg.type)}>
@@ -524,40 +623,78 @@ export default function IRCClientSim({
 
         {/* User list pane */}
         {currentRoom !== 'Status' && (
-          <div className="w-[150px] bg-white border border-slate-200/80 rounded-lg p-2 overflow-y-auto flex flex-col select-none shadow-inner">
-            <div className="flex items-center gap-1.5 border-b border-slate-100 pb-2 mb-2 px-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-              <Users size={11} className="text-slate-400" />
+          <div className={`w-[150px] border rounded-lg p-2 overflow-y-auto flex flex-col select-none shadow-inner transition-colors ${
+            isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-200/80'
+          }`}>
+            <div className={`flex items-center gap-1.5 border-b pb-2 mb-2 px-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+              isDarkMode ? 'border-slate-900 text-slate-500' : 'border-slate-100 text-slate-400'
+            }`}>
+              <Users size={11} className={isDarkMode ? 'text-slate-500' : 'text-slate-400'} />
               <span>Users ({activeRoomData.users.length})</span>
             </div>
             <div className="flex flex-col gap-0.5">
-              {activeRoomData.users.map((username) => {
-                const isMe = username === nick;
-                const isOp = username === 'Python_Expert' || username === 'PyQt6_Fan';
-                return (
-                  <div
-                     key={username}
-                     className={`px-2 py-1 rounded-md text-xs flex items-center justify-between font-sans transition-colors ${
-                       isMe ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
-                     }`}
-                  >
-                    <span className="truncate">
-                      {isOp ? `@${username}` : username}
-                    </span>
-                    {isOp && (
-                      <span className="text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-1 py-0.2 rounded scale-95 shadow-sm">
-                        OP
+              {[...activeRoomData.users]
+                .sort((a, b) => {
+                  const isOpA = a === 'Python_Expert' || a === 'PyQt6_Fan';
+                  const isOpB = b === 'Python_Expert' || b === 'PyQt6_Fan';
+                  const isVoiceA = a === 'ClassicChatter';
+                  const isVoiceB = b === 'ClassicChatter';
+                  
+                  if (isOpA && !isOpB) return -1;
+                  if (!isOpA && isOpB) return 1;
+                  if (isVoiceA && !isVoiceB) return -1;
+                  if (!isVoiceA && isVoiceB) return 1;
+                  return a.localeCompare(b);
+                })
+                .map((username) => {
+                  const isMe = username === nick;
+                  const isOp = username === 'Python_Expert' || username === 'PyQt6_Fan';
+                  const isVoice = username === 'ClassicChatter';
+                  return (
+                    <div
+                       key={username}
+                       className={`px-2 py-1 rounded-md text-xs flex items-center justify-between font-sans transition-colors ${
+                         isMe
+                           ? isDarkMode
+                             ? 'bg-indigo-950/60 text-indigo-300 font-bold'
+                             : 'bg-indigo-50 text-indigo-700 font-bold'
+                           : isDarkMode
+                           ? 'text-slate-300 hover:bg-slate-800'
+                           : 'text-slate-700 hover:bg-slate-50'
+                       }`}
+                    >
+                      <span className="truncate">
+                        {isOp ? `@${username}` : isVoice ? `+${username}` : username}
                       </span>
-                    )}
-                  </div>
-                );
-              })}
+                      {isOp ? (
+                        <span className={`text-[9px] font-bold px-1 py-0.2 rounded scale-95 shadow-sm ${
+                          isDarkMode
+                            ? 'text-rose-400 bg-rose-950/30 border border-rose-900/50'
+                            : 'text-rose-600 bg-rose-50 border border-rose-100'
+                        }`}>
+                          OP
+                        </span>
+                      ) : isVoice ? (
+                        <span className={`text-[9px] font-bold px-1 py-0.2 rounded scale-95 shadow-sm ${
+                          isDarkMode
+                            ? 'text-amber-400 bg-amber-950/30 border border-amber-900/50'
+                            : 'text-amber-600 bg-amber-50 border border-amber-100'
+                        }`}>
+                          VOICE
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}
       </div>
 
       {/* 5. Message input bar */}
-      <form onSubmit={handleSendMessage} className="bg-slate-100 border-t border-slate-200 p-2.5 flex gap-2">
+      <form onSubmit={handleSendMessage} className={`border-t p-2.5 flex gap-2 transition-colors ${
+        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+      }`}>
         <input
           type="text"
           value={inputValue}
@@ -568,13 +705,21 @@ export default function IRCClientSim({
               : 'พิมพ์ข้อความคุยกับบอท หรือรันคำสั่ง เช่น /join #pyqt6, /nick Somchai จากนั้นกด Enter...'
           }
           disabled={!isConnected && currentRoom !== 'Status'}
-          className="flex-1 bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 px-3.5 py-2 rounded-lg text-xs outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all shadow-sm"
+          className={`flex-1 px-3.5 py-2 rounded-lg text-xs outline-none transition-all shadow-sm focus:ring-1 ${
+            isDarkMode
+              ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-indigo-400 focus:ring-indigo-400/20 disabled:bg-slate-900 disabled:text-slate-600'
+              : 'bg-white border border-slate-200 text-slate-800 focus:border-indigo-500 focus:ring-indigo-500 px-3.5 py-2 rounded-lg text-xs outline-none disabled:bg-slate-50 disabled:text-slate-400 transition-all shadow-sm'
+          }`}
           id="irc-message-input"
         />
         <button
           type="submit"
           disabled={(!isConnected && currentRoom !== 'Status') || !inputValue.trim()}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 px-5 font-bold text-xs rounded-lg transition-all shadow-sm active:scale-95 cursor-pointer"
+          className={`disabled:cursor-not-allowed flex items-center justify-center gap-1.5 px-5 font-bold text-xs rounded-lg transition-all shadow-sm active:scale-95 cursor-pointer ${
+            isDarkMode
+              ? 'bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-800 disabled:text-slate-600'
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-200 disabled:text-slate-400'
+          }`}
           id="btn-irc-send"
         >
           <Send size={12} />
@@ -583,24 +728,26 @@ export default function IRCClientSim({
       </form>
 
       {/* 6. Client Status Bar */}
-      <div className="bg-slate-50 border-t border-slate-200 py-2 px-3 flex justify-between text-[11px] text-slate-500 select-none">
+      <div className={`border-t py-2 px-3 flex justify-between text-[11px] select-none transition-colors ${
+        isDarkMode ? 'bg-slate-950 border-slate-900 text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-500'
+      }`}>
         <div className="flex gap-4">
           <span className="font-bold">
             Status:{' '}
-            <span className={isConnected ? 'text-emerald-600 font-bold' : isConnecting ? 'text-amber-500 animate-pulse font-bold' : 'text-slate-400 font-medium'}>
+            <span className={isConnected ? 'text-emerald-500 font-bold' : isConnecting ? 'text-amber-500 animate-pulse font-bold' : 'text-slate-400 font-medium'}>
               {isConnected ? 'ONLINE' : isConnecting ? 'CONNECTING...' : 'OFFLINE'}
             </span>
           </span>
           {isConnected && (
             <div className="hidden md:flex gap-4">
               <span>
-                Server: <strong className="font-mono text-slate-600 font-medium">{server}</strong>
+                Server: <strong className={`font-mono font-medium transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{server}</strong>
               </span>
               <span>
-                Room: <strong className="text-indigo-600 font-mono font-medium">{currentRoom}</strong>
+                Room: <strong className={`font-mono font-medium transition-colors ${isDarkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>{currentRoom}</strong>
               </span>
               <span>
-                Nick: <strong className="font-mono text-slate-600 font-medium">{nick}</strong>
+                Nick: <strong className={`font-mono font-medium transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{nick}</strong>
               </span>
             </div>
           )}
