@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff, AtSign, MessageSquare, Paperclip } from 'lucide-react';
+import { Play, Square, Send, Info, Users, HelpCircle, Sun, Moon, Radio, Volume2, VolumeX, Music, Activity, Bell, BellOff, AtSign, MessageSquare, Paperclip, LogOut } from 'lucide-react';
 import { IRCMessage, IRCChannel } from '../types';
 
 interface IRCClientSimProps {
@@ -331,6 +331,9 @@ export default function IRCClientSim({
   // Banned users map (channel name -> array of banned clean nicks)
   const [bannedUsersMap, setBannedUsersMap] = useState<Record<string, string[]>>({});
 
+  // Record recently left users: roomName -> Array of { nick: string; time: string; reason?: string }
+  const [leftUsersMap, setLeftUsersMap] = useState<Record<string, { nick: string; time: string; reason?: string }[]>>({});
+
   // Message input state
   const [inputValue, setInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -426,13 +429,57 @@ export default function IRCClientSim({
     return name.replace(/^[@+%&~]+/, '');
   };
 
+  // Helper to generate a large and complete initial user list for a room
+  const getInitialUsersForRoom = (userNick: string): string[] => {
+    const defaultUsers = [
+      '@Python_Expert',
+      '@PyQt6_Fan',
+      '@IRCOp_Max',
+      '@SiamNet',
+      '+ClassicChatter',
+      '+Thaidog',
+      '+SiamBoy',
+      '+RetroCoder',
+      'MemeLord',
+      'RetroUser',
+      'Somchai',
+      'Somsri',
+      'Supa',
+      'Anong',
+      'Kitti',
+      'Wichai',
+      'Nipa',
+      'Noppadon',
+      'Malai',
+      'Udom',
+      'Chai',
+      'Prasert',
+      'Vichit',
+      'Panya'
+    ];
+    const cleanMe = cleanNick(userNick).toLowerCase();
+    const filteredDefaults = defaultUsers.filter(u => cleanNick(u).toLowerCase() !== cleanMe);
+    return [userNick, ...filteredDefaults];
+  };
+
   // Add a user to a specific room if they don't already exist (deduplicating using washed nick)
   const addUserToRoom = (roomName: string, userToAdd: string) => {
+    const cleanNew = cleanNick(userToAdd);
+
+    // Remove from leftUsersMap since they joined back
+    setLeftUsersMap((prev) => {
+      const list = prev[roomName.toLowerCase()] || [];
+      if (!list.some(u => u.nick === cleanNew)) return prev;
+      return {
+        ...prev,
+        [roomName.toLowerCase()]: list.filter(u => u.nick !== cleanNew),
+      };
+    });
+
     setRooms((prev) => {
       const room = prev[roomName];
       if (!room) return prev;
       
-      const cleanNew = cleanNick(userToAdd);
       const exists = room.users.some(u => cleanNick(u) === cleanNew);
       if (exists) return prev;
       
@@ -447,12 +494,25 @@ export default function IRCClientSim({
   };
 
   // Remove a user from a specific room (matching using washed nick)
-  const removeUserFromRoom = (roomName: string, userToRemove: string) => {
+  const removeUserFromRoom = (roomName: string, userToRemove: string, reason?: string) => {
+    const cleanTarget = cleanNick(userToRemove);
+
+    // Record in leftUsersMap
+    const timestamp = new Date().toLocaleTimeString().substring(0, 5);
+    setLeftUsersMap((prev) => {
+      const list = prev[roomName.toLowerCase()] || [];
+      if (list.some(u => u.nick === cleanTarget)) return prev;
+      const updated = [{ nick: cleanTarget, time: timestamp, reason }, ...list].slice(0, 10);
+      return {
+        ...prev,
+        [roomName.toLowerCase()]: updated,
+      };
+    });
+
     setRooms((prev) => {
       const room = prev[roomName];
       if (!room) return prev;
       
-      const cleanTarget = cleanNick(userToRemove);
       return {
         ...prev,
         [roomName]: {
@@ -581,7 +641,7 @@ export default function IRCClientSim({
     'เธรดเสริม (Worker Thread) จะคอยสแตนด์บายอ่านข้อมูลจาก socket ตลอดเวลา ถ้ามีข้อมูลใหม่เข้ามา มันจะยิง Signal ไปปลุกหน้าจอหลักให้วาดข้อความขึ้นทันที',
   ];
 
-  // Auto-simulated chatting and dynamic user events loop (JOIN, PART, KICK)
+  // Auto-simulated chatting and dynamic user events loop (JOIN, PART, KICK, MODE)
   useEffect(() => {
     if (!isConnected) return;
 
@@ -593,17 +653,18 @@ export default function IRCClientSim({
       const randomChannelName = activeChannels[Math.floor(Math.random() * activeChannels.length)];
       
       // Determine what event to simulate:
-      // 0.0 - 0.60: Normal Chat Message (60%)
-      // 0.60 - 0.75: User Join (15%)
-      // 0.75 - 0.90: User Part (15%)
-      // 0.90 - 1.00: User Kick (10%)
+      // 0.00 - 0.55: Normal Chat Message (55%)
+      // 0.55 - 0.70: User Join (15%)
+      // 0.70 - 0.80: User Part (10%)
+      // 0.80 - 0.90: User Kick (10%)
+      // 0.90 - 1.00: Operator Mode Change (+v / +o) (10%)
       const rand = Math.random();
       
       const joinPool = ['Somchai', 'Somsri', 'Supa', 'Anong', 'Kitti', 'Wichai', 'Nipa', 'Noppadon', 'Malai', 'Udom'];
       const prefixPool = ['@', '+', '', '']; // Chance of Op, Voice or normal
-     const kickReasons = ['Spamming links', 'Flooding the chat', 'Off-topic discussion', 'Please keep it polite', 'Inappropriate nickname'];
+      const kickReasons = ['Spamming links', 'Flooding the chat', 'Off-topic discussion', 'Please keep it polite', 'Inappropriate nickname'];
 
-      if (rand < 0.60) {
+      if (rand < 0.55) {
         // Normal Message
         const currentUsers = rooms[randomChannelName]?.users || [];
         if (currentUsers.length === 0) return;
@@ -617,7 +678,7 @@ export default function IRCClientSim({
         const randomQuote = botQuotes[Math.floor(Math.random() * botQuotes.length)];
         
         addMessageToRoom(randomChannelName, sender, randomQuote, 'user');
-      } else if (rand < 0.75) {
+      } else if (rand < 0.70) {
         // User Join
         const randomNewNick = joinPool[Math.floor(Math.random() * joinPool.length)];
         const prefix = prefixPool[Math.floor(Math.random() * prefixPool.length)];
@@ -628,7 +689,7 @@ export default function IRCClientSim({
 
         addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${fullNick} (${randomNewNick}@irc.thaiirc.com) has joined ${randomChannelName}`, 'join');
         addUserToRoom(randomChannelName, fullNick);
-      } else if (rand < 0.90) {
+      } else if (rand < 0.80) {
         // User Part
         const currentUsers = rooms[randomChannelName]?.users || [];
         const leavingCandidates = currentUsers.filter(u => {
@@ -640,8 +701,8 @@ export default function IRCClientSim({
         const targetUser = leavingCandidates[Math.floor(Math.random() * leavingCandidates.length)];
 
         addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${targetUser} has left ${randomChannelName}`, 'part');
-        removeUserFromRoom(randomChannelName, targetUser);
-      } else {
+        removeUserFromRoom(randomChannelName, targetUser, 'Parted from room');
+      } else if (rand < 0.90) {
         // User Kick
         const currentUsers = rooms[randomChannelName]?.users || [];
         const opsInRoom = currentUsers.filter(u => u.startsWith('@'));
@@ -658,7 +719,71 @@ export default function IRCClientSim({
         const reason = kickReasons[Math.floor(Math.random() * kickReasons.length)];
 
         addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${cleanTarget} was kicked by ${kicker} (${reason})`, 'error');
-        removeUserFromRoom(randomChannelName, targetUser);
+        removeUserFromRoom(randomChannelName, targetUser, `Kicked by ${kicker}: ${reason}`);
+      } else {
+        // Operator Mode Change (+v / +o)
+        const currentUsers = rooms[randomChannelName]?.users || [];
+        const opsInRoom = currentUsers.filter(u => u.startsWith('@') || u === 'Python_Expert' || u === 'PyQt6_Fan');
+        const kicker = opsInRoom.length > 0 ? cleanNick(opsInRoom[Math.floor(Math.random() * opsInRoom.length)]) : 'Python_Expert';
+        
+        // Find users to give status to
+        const candidates = currentUsers.filter(u => !u.startsWith('@') && cleanNick(u) !== kicker);
+        if (candidates.length > 0) {
+          const targetUser = candidates[Math.floor(Math.random() * candidates.length)];
+          const cleanTarget = cleanNick(targetUser);
+          const isMe = cleanTarget.toLowerCase() === cleanNick(nick).toLowerCase();
+          const giveVoice = Math.random() < 0.6; // 60% chance Voice, 40% chance Op
+
+          if (giveVoice) {
+            // Give Voice
+            addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${kicker} มอบสิทธิ์การพิมพ์เสียง (Mode +v) ให้กับ ${cleanTarget}`, 'system');
+            
+            setRooms((prev) => {
+              const room = prev[randomChannelName];
+              if (!room) return prev;
+              return {
+                ...prev,
+                [randomChannelName]: {
+                  ...room,
+                  users: room.users.map((u) => {
+                    if (cleanNick(u) === cleanTarget) {
+                      return `+${cleanTarget}`;
+                    }
+                    return u;
+                  }),
+                },
+              };
+            });
+
+            if (isMe && !nick.startsWith('@')) {
+              setNick(`+${cleanTarget}`);
+            }
+          } else {
+            // Give Op
+            addMessageToRoom(randomChannelName, 'SYSTEM', `*** ${kicker} มอบสถานะผู้ดูแลห้อง (Mode +o) ให้กับ ${cleanTarget}`, 'system');
+            
+            setRooms((prev) => {
+              const room = prev[randomChannelName];
+              if (!room) return prev;
+              return {
+                ...prev,
+                [randomChannelName]: {
+                  ...room,
+                  users: room.users.map((u) => {
+                    if (cleanNick(u) === cleanTarget) {
+                      return `@${cleanTarget}`;
+                    }
+                    return u;
+                  }),
+                },
+              };
+            });
+
+            if (isMe) {
+              setNick(`@${cleanTarget}`);
+            }
+          }
+        }
       }
     }, 12000);
 
@@ -1025,7 +1150,7 @@ export default function IRCClientSim({
           name: formattedChan,
           topic: `ห้องพูดคุยเกี่ยวกับ ${formattedChan} และการเขียนโปรแกรม PyQt6`,
           // Standard initial users with operator @ and voice + prefixes
-          users: [nick, '@Python_Expert', '@PyQt6_Fan', '+ClassicChatter', 'MemeLord', 'RetroUser'],
+          users: getInitialUsersForRoom(nick),
           messages: [
             {
               id: `join-${formattedChan}-${Date.now()}`,
@@ -2232,6 +2357,34 @@ export default function IRCClientSim({
                   );
                 })}
             </div>
+
+            {/* Recently Left Section */}
+            {leftUsersMap[currentRoom.toLowerCase()] && leftUsersMap[currentRoom.toLowerCase()].length > 0 && (
+              <>
+                <div className={`flex items-center gap-1.5 border-b pb-1.5 mt-5 mb-2 px-1 text-[10px] font-bold uppercase tracking-wider transition-colors shrink-0 ${
+                  isDarkMode ? 'border-slate-900 text-slate-500' : 'border-slate-100 text-slate-400'
+                }`}>
+                  <LogOut size={10} className="text-slate-400" />
+                  <span>Recently Left ({leftUsersMap[currentRoom.toLowerCase()].length})</span>
+                </div>
+                <div className="flex flex-col gap-0.5 max-h-48 overflow-y-auto shrink-0 pr-1">
+                  {leftUsersMap[currentRoom.toLowerCase()].map((item, idx) => (
+                    <div
+                      key={`left-${item.nick}-${idx}`}
+                      className="px-2 py-1 rounded flex items-center justify-between text-slate-400 dark:text-slate-500 italic text-xs hover:bg-slate-500/5 transition-colors"
+                      title={item.reason ? `เหตุผลที่ออก: ${item.reason}` : 'ไม่มีเหตุผลระบุ'}
+                    >
+                      <span className="truncate flex-1 select-text">
+                        🚪 {item.nick}
+                      </span>
+                      <span className="text-[9px] font-mono shrink-0 select-none opacity-80">
+                        {item.time}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
