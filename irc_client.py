@@ -166,9 +166,12 @@ class IRCWorker(QObject):
             
             if command == "PRIVMSG":
                 self.message_received.emit(target, sender_nick, params)
-            elif command == "001":
-                self.registered.emit()
-                self.system_message.emit(f"ลงทะเบียนสำเร็จ: {params}")
+            elif command in ["001", "002", "003", "004", "005", "251", "252", "253", "254", "255", "265", "266", "396"]:
+                if command == "001":
+                    self.registered.emit()
+                self.system_message.emit(f"[STATUS] [{command}] {params if params else line}")
+            elif command == "NOTICE":
+                self.system_message.emit(f"[STATUS] [NOTICE] {params if params else line}")
             elif command == "JOIN":
                 channel = target.lstrip(":")
                 self.user_joined.emit(channel, sender_nick)
@@ -885,6 +888,15 @@ class PIRCHMainWindow(QMainWindow):
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         
+        # หากตรวจพบคำสั่งหรือรหัสสถานะที่ถูกระบุให้ไปแสดงที่ห้อง Status โดยเฉพาะ
+        if text.startswith("[STATUS]"):
+            clean_text = text[len("[STATUS]"):].strip()
+            formatted_clean = self.format_mirc_text(clean_text)
+            text_color = "#475569" if self.current_theme == "light" else "#94a3b8"
+            msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>[{current_time}]</span> <span style='color: {text_color};'>{formatted_clean}</span></div>"
+            self.status_display.append(msg_html)
+            return
+
         # แปลงรหัส mIRC และ URL ให้สวยงาม
         formatted_text = self.format_mirc_text(text)
         
