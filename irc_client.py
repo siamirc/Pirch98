@@ -56,9 +56,17 @@ class IRCWorker(QObject):
         self.is_running = False
 
     def stop(self):
-        """ สั่งให้เธรดหยุดทำงานและทำความสะอาด """
+        """ สั่งให้เธรดหยุดทำงานและปิด Socket อย่างปลอดภัย """
         self.is_running = False
-        self.cleanup()
+        if self.socket:
+            try:
+                self.socket.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                self.socket.close()
+            except Exception:
+                pass
 
     def run(self):
         """ ฟังก์ชันหลักที่จะรันในเธรดแยก """
@@ -221,7 +229,7 @@ class IRCWorker(QObject):
             self.system_message.emit(line)
 
     def cleanup(self):
-        """ ปิด Socket และทำความสะอาดออบเจกต์ """
+        """ ปิด Socket และทำความสะอาดออบเจกต์อย่างปลอดภัยในเธรดเดียว """
         self.is_running = False
         if self.socket:
             try:
@@ -229,14 +237,18 @@ class IRCWorker(QObject):
             except Exception:
                 pass
             self.socket = None
-        #self.disconnected.emit()
+        
+        # ป้องกันไม่ให้ส่งสัญญาณ disconnected ซ้ำซ้อน
+        if hasattr(self, '_cleanup_done') and self._cleanup_done:
+            return
+        self._cleanup_done = True
+        
         try:
             # ตรวจสอบก่อนว่าวัตถุฝั่ง PyQt6 ยังมีตัวตนอยู่ในหน่วยความจำจริง ไม่ใช่ Runtime Error
-            # โดยเรียกคำสั่งตรวจสอบภายในเพื่อเช็กสถานะการมีอยู่
             if hasattr(self, 'disconnected'):
                 self.disconnected.emit()
         except RuntimeError:
-            # หากวัตถุฝั่ง C/C++ โดนระเบิดทิ้งไปแล้ว ให้ปล่อยผ่าน (Pass) ไปเลย ไม่ต้องทำแอปเด้งหลุด
+            # หากวัตถุฝั่ง C/C++ โดนระเบิดทิ้งไปแล้ว ให้ปล่อยผ่าน (Pass)
             print("System System: IRCWorker object was already deleted, skipping signal emit.")
             pass
         except Exception as e:
@@ -696,6 +708,26 @@ class PIRCHMainWindow(QMainWindow):
             QMessageBox.warning(self, "Port ไม่ถูกต้อง", "Port ต้องเป็นตัวเลขเท่านั้น")
             return
 
+        # ป้องกันการชนกันและ QThread Destroyed crash: เคลียร์ตัวเก่าให้เกลี้ยงก่อนเชื่อมต่อใหม่
+        if self.irc_thread is not None:
+            try:
+                if self.irc_worker:
+                    try:
+                        self.irc_worker.disconnected.disconnect()
+                        self.irc_worker.error_occurred.disconnect()
+                        self.irc_worker.system_message.disconnect()
+                        self.irc_worker.message_received.disconnect()
+                    except Exception:
+                        pass
+                self.irc_thread.quit()
+                self.irc_thread.wait(500)
+            except Exception:
+                pass
+            self.irc_thread = None
+            
+        if self.irc_worker is not None:
+            self.irc_worker = None
+
         # 1. สร้าง Thread ใหม่
         self.irc_thread = QThread()
         
@@ -735,12 +767,18 @@ class PIRCHMainWindow(QMainWindow):
         if self.irc_worker:
             self.status_bar.showMessage("กำลังตัดการเชื่อมต่อ...")
             # ส่งคำสั่ง QUIT ไปแจ้งเซิร์ฟเวอร์ก่อนปิด Socket
-            self.irc_worker.send_line("QUIT :Leaving with pyIRCH98")
+            try:
+                self.irc_worker.send_line("QUIT :Leaving with pyIRCH98")
+            except Exception:
+                pass
             self.irc_worker.stop()
         
         if self.irc_thread:
             self.irc_thread.quit()
-            self.irc_thread.wait(2000) # รอสูงสุด 2 วินาทีให้ Thread ปิดสนิท
+            self.irc_thread.wait(1000) # รอสูงสุด 1 วินาทีให้ Thread ปิดสนิท
+            self.irc_thread = None
+        
+        self.irc_worker = None
 
     def on_irc_connected(self):
         """ ทำงานหลังจาก Socket ต่อติดเสร็จสิ้น """
@@ -1552,36 +1590,48 @@ class PIRCHMainWindow(QMainWindow):
                     self.irc_worker.send_line(f"TOPIC {self.current_channel} :{args}")
             elif cmd in ["NS", "NICKSERV"]:
                 if self.irc_worker:
+                    self.irc_worker.send_line(f"NICKSERV {args}")
+                    self.irc_worker.send_line(f"SQUERY NickServ :{args}")
                     self.irc_worker.send_line(f"PRIVMSG NickServ :{args}")
                     self.append_system_msg(f"-> NickServ: {args}")
                 else:
                     self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ NickServ ได้")
             elif cmd in ["CS", "CHANSERV"]:
                 if self.irc_worker:
+                    self.irc_worker.send_line(f"CHANSERV {args}")
+                    self.irc_worker.send_line(f"SQUERY ChanServ :{args}")
                     self.irc_worker.send_line(f"PRIVMSG ChanServ :{args}")
                     self.append_system_msg(f"-> ChanServ: {args}")
                 else:
                     self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ ChanServ ได้")
             elif cmd in ["OS", "OPERSERV"]:
                 if self.irc_worker:
+                    self.irc_worker.send_line(f"OPERSERV {args}")
+                    self.irc_worker.send_line(f"SQUERY OperServ :{args}")
                     self.irc_worker.send_line(f"PRIVMSG OperServ :{args}")
                     self.append_system_msg(f"-> OperServ: {args}")
                 else:
                     self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ OperServ ได้")
             elif cmd in ["MS", "MEMOSERV"]:
                 if self.irc_worker:
+                    self.irc_worker.send_line(f"MEMOSERV {args}")
+                    self.irc_worker.send_line(f"SQUERY MemoServ :{args}")
                     self.irc_worker.send_line(f"PRIVMSG MemoServ :{args}")
                     self.append_system_msg(f"-> MemoServ: {args}")
                 else:
                     self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ MemoServ ได้")
             elif cmd in ["HS", "HOSTSERV"]:
                 if self.irc_worker:
+                    self.irc_worker.send_line(f"HOSTSERV {args}")
+                    self.irc_worker.send_line(f"SQUERY HostServ :{args}")
                     self.irc_worker.send_line(f"PRIVMSG HostServ :{args}")
                     self.append_system_msg(f"-> HostServ: {args}")
                 else:
                     self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ HostServ ได้")
             elif cmd in ["BS", "BOTSERV"]:
                 if self.irc_worker:
+                    self.irc_worker.send_line(f"BOTSERV {args}")
+                    self.irc_worker.send_line(f"SQUERY BotServ :{args}")
                     self.irc_worker.send_line(f"PRIVMSG BotServ :{args}")
                     self.append_system_msg(f"-> BotServ: {args}")
                 else:
