@@ -479,6 +479,8 @@ class PIRCHMainWindow(QMainWindow):
         # ----------------------------------------------------
         self.tab_widget = QTabWidget()
         self.tab_widget.setObjectName("ChannelTabs")
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.tabCloseRequested.connect(self.on_tab_close_requested)
         main_layout.addWidget(self.tab_widget, stretch=1)
 
         # แท็บสถานะระบบ (Status Tab)
@@ -600,6 +602,30 @@ class PIRCHMainWindow(QMainWindow):
                 self.tab_widget.removeTab(idx)
             del self.rooms[chan_key]
             # สลับกลับไปที่แท็บ Status
+            self.tab_widget.setCurrentIndex(0)
+
+    def on_tab_close_requested(self, index):
+        """ กดกากบาทปิดแท็บห้องแชทหรือห้อง PM """
+        tab_text = self.tab_widget.tabText(index)
+        if tab_text == "Status":
+            return # ไม่ให้ปิดแท็บหลัก Status
+            
+        # ลบเครื่องหมายเช็คหรือตัวบ่งชี้อื่นๆ ถ้ามี เช่น (1) หรืออื่นๆ
+        clean_name = tab_text.split(" (")[0].strip()
+        
+        # ตรวจสอบเพื่อส่ง PART ออกเซิร์ฟเวอร์ถ้าเป็น Channel
+        if clean_name.startswith("#"):
+            if self.irc_worker:
+                self.irc_worker.send_line(f"PART {clean_name}")
+                
+        self.tab_widget.removeTab(index)
+        
+        chan_key = clean_name.lower()
+        if chan_key in self.rooms:
+            del self.rooms[chan_key]
+            
+        # สลับกลับไปที่แท็บ Status หรืออันที่มีอยู่
+        if self.tab_widget.count() > 0:
             self.tab_widget.setCurrentIndex(0)
 
     def toggle_theme(self):

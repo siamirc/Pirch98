@@ -355,23 +355,49 @@ export default function IRCClientSim({
       : `${(file.size / 1024).toFixed(1)} KB`;
 
     const isImg = file.type.startsWith('image/');
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
+    const timestamp = new Date().toLocaleTimeString();
+    const newMessageId = `msg-${Date.now()}`;
+    
+    // Generate a direct download link format on tmpfiles.org as requested
+    const fileId = Math.floor(10000000 + Math.random() * 90000000);
+    const mockTmpfilesUrl = `https://tmpfiles.org/dl/${fileId}/${file.name}`;
+    
+    const fileMsg: IRCMessage = {
+      id: newMessageId,
+      timestamp,
+      sender: nick,
+      text: `อัปโหลดไฟล์เสร็จสิ้น ลิงก์ดาวน์โหลดตรง: ${mockTmpfilesUrl} (${sizeStr})`,
+      type: 'user',
+    };
+
+    setRooms((prev) => {
+      const room = prev[currentRoom];
+      if (!room) return prev;
+      return {
+        ...prev,
+        [currentRoom]: {
+          ...room,
+          messages: [...room.messages, fileMsg],
+        },
+      };
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    setTimeout(() => {
+      const botName = currentRoom === '#pyqt6' ? 'Python_Expert' : 'PyQt6_Fan';
+      const replyText = isImg 
+        ? `โอ้! ได้รับรูปภาพจากลิ้งก์ "${file.name}" เรียบร้อยแล้วครับ รูปภาพสวยงามและชัดเจนมาก! 🖼️✨`
+        : `ได้รับไฟล์เรียบร้อยแล้วจากลิ้งก์ดาวน์โหลดครับ ขอบคุณสำหรับไฟล์ข้อมูล! 📂🤖`;
       
-      const timestamp = new Date().toLocaleTimeString();
-      const newMessageId = `msg-${Date.now()}`;
-      
-      const fileMsg: IRCMessage = {
-        id: newMessageId,
-        timestamp,
-        sender: nick,
-        text: `[ส่งไฟล์สำเร็จ] 📎 ${file.name} (${sizeStr})`,
+      const replyMsg: IRCMessage = {
+        id: `msg-reply-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        sender: botName,
+        text: replyText,
         type: 'user',
-        fileUrl: dataUrl,
-        fileName: file.name,
-        fileSize: sizeStr,
-        isImage: isImg
       };
 
       setRooms((prev) => {
@@ -381,44 +407,11 @@ export default function IRCClientSim({
           ...prev,
           [currentRoom]: {
             ...room,
-            messages: [...room.messages, fileMsg],
+            messages: [...room.messages, replyMsg],
           },
         };
       });
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-      setTimeout(() => {
-        const botName = currentRoom === '#pyqt6' ? 'Python_Expert' : 'PyQt6_Fan';
-        const replyText = isImg 
-          ? `โอ้! ได้รับรูปภาพ "${file.name}" เรียบร้อยแล้วครับ รูปภาพสวยงามและชัดเจนมาก! 🖼️✨`
-          : `ได้รับไฟล์ "${file.name}" (${sizeStr}) เรียบร้อยแล้วครับ ขอบคุณสำหรับไฟล์ข้อมูล! 📂🤖`;
-        
-        const replyMsg: IRCMessage = {
-          id: `msg-reply-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString(),
-          sender: botName,
-          text: replyText,
-          type: 'user',
-        };
-
-        setRooms((prev) => {
-          const room = prev[currentRoom];
-          if (!room) return prev;
-          return {
-            ...prev,
-            [currentRoom]: {
-              ...room,
-              messages: [...room.messages, replyMsg],
-            },
-          };
-        });
-      }, 1000);
-    };
-
-    reader.readAsDataURL(file);
+    }, 1000);
   };
   
   // Font size setting state (sm = small, md = medium, lg = large)
@@ -2067,12 +2060,14 @@ export default function IRCClientSim({
                   {roomObj.unreadCount}
                 </span>
               )}
-              {roomName !== 'Status' && roomName !== 'MOTD' && (
+              {roomName !== 'Status' && (
                 <span 
                   onClick={(e) => {
                     e.stopPropagation();
                     // Close/remove room
-                    setCurrentRoom('Status');
+                    if (roomName === currentRoom) {
+                      setCurrentRoom('Status');
+                    }
                     setRooms((prev) => {
                       const copy = { ...prev };
                       delete copy[roomName];
@@ -2169,32 +2164,9 @@ export default function IRCClientSim({
                 {/* 4. Text Content Column with Indentation Alignment */}
                 <div className="flex-1 text-left break-words">
                   {isUserMsg ? (
-                    <div className="flex flex-col gap-1.5">
-                      <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
-                        {renderFormattedText(msg.text, isDarkMode)}
-                      </span>
-                      {msg.fileUrl && (
-                        <div className={`mt-1 p-2 rounded-lg border max-w-sm ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-                          {msg.isImage ? (
-                            <div className="flex flex-col gap-1">
-                              <img src={msg.fileUrl} alt={msg.fileName} className="max-h-40 object-contain rounded border border-slate-700/10 dark:border-slate-800" referrerPolicy="no-referrer" />
-                              <span className="text-[10px] text-slate-500 font-mono mt-0.5 truncate block">{msg.fileName} ({msg.fileSize})</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xl">📄</span>
-                              <div className="flex-1 min-w-0">
-                                <span className="text-xs font-semibold block truncate text-indigo-500">{msg.fileName}</span>
-                                <span className="text-[10px] text-slate-500 font-mono">{msg.fileSize}</span>
-                              </div>
-                              <a href={msg.fileUrl} download={msg.fileName} className="px-2 py-1 text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded transition-all cursor-pointer">
-                                Download
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <span className={`whitespace-pre-wrap transition-colors ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                      {renderFormattedText(msg.text, isDarkMode)}
+                    </span>
                   ) : (
                     <span className={`font-sans italic ${getMessageColorClass(msg.type)}`}>
                       {renderFormattedText(msg.text, isDarkMode)}
