@@ -71,6 +71,15 @@ const getMircColor = (colorNum: number, isDark: boolean): string => {
   }
 };
 
+const EMOJI_CATEGORIES: Record<string, string[]> = {
+  '😃': ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤔', '🫣', '🤭', '🫢', '🫡', '🤫', '🫠', '🤝', '👍', '👎', '👊', '✊', '🤛', '🤜', '🤞', '✌️', '🤟', '🤘', '👌', '🤌', '🤏', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐', '🖖', '👋', '🤙', '💪', '🦾', '🖕', '✍️', '🙏', '👏', '🙌', '🫶', '👐', '👤', '👥', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟'],
+  '🐱': ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪰', '🪲', '🪳', '🕷', '🕸', '🦂', '🐢', '🐍', '🦎', '🐙', '🦑', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🦬', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊', '🐇', '🦝', '🦡', '🦫', '🦦', '🦥', '🐿', '🦔', '🐾', '🐉', '🐲', '🌵', '🎄', '🌲', '🌳', '🌴', '🌱', '🌿', '☘️', '🍀', '🍁', '🍂', '🍃'],
+  '🍔': ['🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🌭', '🍔', '🍟', '🍕', '🥪', '🥙', '🌮', '🌯', '🫓', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🍟', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕️', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🥤', '🧋', '🧃', '🧉', '🧊'],
+  '⚽': ['⚽️', '🏀', '🏈', '⚾️', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳️', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸', '🥌', '🎿', '⛷', '🏂', '🏋️‍♀️', '🏋️', '🤼‍♀️', '🤼', '🤸‍♀️', '🤸', '⛹️‍♀️', '⛹️', '🤺', '🤾‍♀️', '🤾', '🏌️‍♀️', '🏌️', '🏇', '🧘‍♀️', '🧘', '🏄‍♀️', '🏄', '🏊‍♀️', '🏊', '🤽‍♀️', '🤽', '🚣‍♀️', '🚣', '🧗‍♀️', '🧗', '🚴‍♀️', '🚴', '🚵‍♀️', '🚵', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖', '🎟', '🎫', '🎪', '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '♟', '🎯', '🎳', '🎮', '🎰', '🧩'],
+  '🚗': ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🏍', '🛵', '🚲', '🛴', '🛹', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫', '🛬', '🛸', '🚁', '⛵️', '🛶', '🚤', '🛳', '⛴', '🚢', '⚓️', '🛟', '🚀', '🛸', '🗺', '🧭', '🏔', '⛰', '🌋', '🗻', '🏕', '🏖', '🏜', '🏝', '🏞', '🏟', '🏛', '🏗', '🧱', '🏘', '🏚', '🏠', '🏡', '🏢', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '🏬', '🏭', '🏯', '🏰', '💒', '🗼', '🗽', '⛪️', '🕌', '🛕', '🕋', '⛩', '⛲️', '⛺️', '🌁', '🌃', '🏙', '🌄', '🌅', '🌆', '🌇', '🌉', '🎠', '🎡', '🎢'],
+  '💡': ['⌚️', '📱', '📲', '💻', '⌨️', '🖥', '🖨', '🖱', '🖲', '🕹', '🗜', '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽', '🎞', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙', '🎚', '🎛', '🧭', '⏱', '⏲', '⏰', '🕰', '⌛️', '⏳', '📡', '🔋', '🔌', '💡', '🔦', '🕯', '🪔', '🧯', '🛢', '💸', '💵', '💴', '💶', '💷', '🪙', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒', '🛠', '⛏', '🪓', '⚙️', '🧱', '🪨', '🪵', '⛓', '🪝', '🔑', '🚪', '🪞', '🪟', '🧺', '🧹', '🧸', '🪆', '🧷', '🧦', '👗', '👘', '👚', '👛', '👜', '👝', '🎒', '👞', '👟', '🥾', '🥿', '👠', '👡', '👢', '👑', '👒', '🎩', '🎓', '🧢', '⛑', '💄', '💍', '💎']
+};
+
 interface TextSegment {
   text: string;
   bold: boolean;
@@ -336,6 +345,8 @@ export default function IRCClientSim({
 
   // Message input state
   const [inputValue, setInputValue] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+  const [activeEmojiTab, setActiveEmojiTab] = useState<string>('😃');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -819,7 +830,8 @@ export default function IRCClientSim({
       isMention,
     };
 
-    if (isMention && mentionNotify) {
+    const isPM = targetRoom.startsWith('💬 ') && cleanNick(sender) !== cleanCurrentNick;
+    if ((isMention || isPM) && mentionNotify) {
       playMentionSound();
     }
 
@@ -1093,6 +1105,13 @@ export default function IRCClientSim({
   };
 
   const joinChannel = (chanName: string) => {
+    if (chanName.includes(',')) {
+      const channels = chanName.split(',').map((c) => c.trim()).filter(Boolean);
+      channels.forEach((chan) => {
+        joinChannel(chan);
+      });
+      return;
+    }
     const formattedChan = chanName.startsWith('#') ? chanName : `#${chanName}`;
     
     // Check if user is banned
@@ -2485,7 +2504,7 @@ export default function IRCClientSim({
       </div>
 
       {/* 5. Message input bar */}
-      <form onSubmit={handleSendMessage} className={`border-t p-2.5 flex gap-2 transition-colors ${
+      <form onSubmit={handleSendMessage} className={`border-t p-2.5 flex gap-2 transition-colors relative ${
         isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
       }`}>
         <input 
@@ -2526,6 +2545,97 @@ export default function IRCClientSim({
           }`}
           id="irc-message-input"
         />
+
+        {/* ปุ่มเลือก Emoji UTF-8 (Emoji Button) */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className={`flex items-center justify-center p-2 rounded-lg border transition-all duration-150 active:scale-95 cursor-pointer shadow-sm ${
+              isDarkMode
+                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+            title="เลือก Emoji UTF-8"
+            id="btn-irc-emoji"
+          >
+            <span className="text-sm select-none">😊</span>
+          </button>
+        </div>
+
+        {/* หน้าต่างเลือก Emoji (Emoji Picker Popover) */}
+        {showEmojiPicker && (
+          <>
+            {/* Backdrop click-away trigger */}
+            <div 
+              className="fixed inset-0 z-40" 
+              onClick={() => setShowEmojiPicker(false)} 
+            />
+            {/* Popover container */}
+            <div 
+              className={`absolute bottom-16 right-3 z-50 w-80 h-64 rounded-xl border shadow-xl flex flex-col overflow-hidden transition-all duration-200 ${
+                isDarkMode 
+                  ? 'bg-slate-900 border-slate-800 text-slate-200' 
+                  : 'bg-white border-slate-200 text-slate-800'
+              }`}
+              id="react-emoji-picker-popup"
+            >
+              {/* Category tabs */}
+              <div className={`flex border-b text-sm transition-colors ${
+                isDarkMode ? 'border-slate-800 bg-slate-950' : 'border-slate-100 bg-slate-50'
+              }`}>
+                {Object.keys(EMOJI_CATEGORIES).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveEmojiTab(cat)}
+                    className={`flex-1 py-2 text-center text-base hover:bg-indigo-500/10 transition-colors select-none cursor-pointer ${
+                      activeEmojiTab === cat 
+                        ? 'border-b-2 border-indigo-500 font-bold bg-indigo-500/5' 
+                        : ''
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              {/* Emojis list grid (scrollable) */}
+              <div className="flex-1 overflow-y-auto p-2 grid grid-cols-8 gap-1.5 scrollbar-thin">
+                {EMOJI_CATEGORIES[activeEmojiTab].map((emoji, index) => (
+                  <button
+                    key={`${emoji}-${index}`}
+                    type="button"
+                    onClick={() => {
+                      // Insert emoji at the cursor position
+                      if (chatInputRef.current) {
+                        const start = chatInputRef.current.selectionStart || 0;
+                        const end = chatInputRef.current.selectionEnd || 0;
+                        const text = chatInputRef.current.value;
+                        const newText = text.substring(0, start) + emoji + text.substring(end);
+                        setInputValue(newText);
+                        // Reset cursor position after insert
+                        setTimeout(() => {
+                          if (chatInputRef.current) {
+                            chatInputRef.current.focus();
+                            chatInputRef.current.selectionStart = chatInputRef.current.selectionEnd = start + emoji.length;
+                          }
+                        }, 10);
+                      } else {
+                        setInputValue((prev) => prev + emoji);
+                      }
+                    }}
+                    className={`text-xl p-1 rounded hover:scale-110 active:scale-95 transition-all cursor-pointer select-none text-center flex items-center justify-center ${
+                      isDarkMode ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         <button
           type="submit"
           disabled={(!isConnected && currentRoom !== 'Status') || !inputValue.trim()}

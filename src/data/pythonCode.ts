@@ -6,7 +6,8 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTextBrowser, QLabel, QSplitter,
-    QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget, QSlider, QCheckBox
+    QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget, QSlider, QCheckBox,
+    QMenu, QDialog, QScrollArea, QGridLayout
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer
 from PyQt6.QtGui import QFont, QColor, QPainter, QBrush
@@ -307,6 +308,119 @@ class EqualizerVisualizer(QWidget):
 
 
 # =====================================================================
+# 1.5. คลาสสำหรับเลือก Emoji UTF-8 (EmojiPicker Dialog)
+# =====================================================================
+class EmojiPicker(QDialog):
+    def __init__(self, parent=None, is_dark=False):
+        super().__init__(parent)
+        self.is_dark = is_dark
+        self.selected_emoji = None
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.setMinimumSize(320, 260)
+        self.resize(320, 260)
+        
+        # Apply style sheet based on dark/light theme
+        if self.is_dark:
+            bg_color = "#1e293b"
+            text_color = "#f1f5f9"
+            border_color = "#475569"
+            tab_bg = "#0f172a"
+            tab_selected_bg = "#334155"
+            btn_hover_bg = "#475569"
+        else:
+            bg_color = "#ffffff"
+            text_color = "#1e293b"
+            border_color = "#cbd5e1"
+            tab_bg = "#f1f5f9"
+            tab_selected_bg = "#e2e8f0"
+            btn_hover_bg = "#e2e8f0"
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            QTabWidget::pane {{
+                border: none;
+                background-color: {bg_color};
+            }}
+            QTabBar::tab {{
+                background-color: {tab_bg};
+                color: {text_color};
+                padding: 6px 10px;
+                border: none;
+                font-family: 'Segoe UI', Arial;
+                font-size: 11px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {tab_selected_bg};
+                font-weight: bold;
+            }}
+            QScrollArea {{
+                border: none;
+                background-color: {bg_color};
+            }}
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                font-size: 20px;
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: {btn_hover_bg};
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        tab_widget = QTabWidget()
+        layout.addWidget(tab_widget)
+
+        categories = {
+            "😃": ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🥸", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓", "🤔", "🫣", "🤭", "🫢", "🫡", "🤫", "🫠", "🤝", "👍", "👎", "👊", "✊", "🤛", "🤜", "🤞", "✌️", "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉", "👆", "👇", "☝️", "✋", "🤚", "🖐", "🖖", "👋", "🤙", "💪", "🦾", "🖕", "✍️", "🙏", "👏", "🙌", "🫶", "👐", "👤", "👥", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟"],
+            "🐱": ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🪱", "🐛", "🦋", "🐌", "🐞", "🐜", "🪰", "🪲", "🪳", "🕷", "🕸", "🦂", "🐢", "🐍", "🦎", "🐙", "🦑", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🦧", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🦬", "🐃", "🐂", "🐄", "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐈", "🐓", "🦃", "🦚", "🦜", "🦢", "🦩", "🕊", "🐇", "🦝", "🦡", "🦫", "🦦", "🦥", "🐿", "🦔", "🐾", "🐉", "🐲", "🌵", "🎄", "🌲", "🌳", "🌴", "🌱", "🌿", "☘️", "🍀", "🍁", "🍂", "🍃"],
+            "🍔": ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶", "🫑", "🌽", "🥕", "🫒", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🥪", "🥙", "🌮", "🌯", "🫓", "🥚", "🍳", "🥘", "🍲", "🫕", "🥣", "🥗", "🍿", "🧈", "🧂", "🥫", "🍱", "🍘", "🍙", "🍚", "🍛", "🍜", "🍝", "🍣", "🍤", "🍥", "🥮", "🍡", "🥟", "🥠", "🥡", "🍦", "🍧", "🍨", "🍩", "🍪", "🎂", "🍰", "🧁", "🥧", "🍫", "🍬", "🍭", "🍮", "🍯", "🍼", "🥛", "☕️", "🫖", "🍵", "🍶", "🍾", "🍷", "🍸", "🍹", "🍺", "🍻", "🥂", "🥃", "🥤", "🧋", "🧃", "🧉", "🧊"],
+            "⚽": ["⚽️", "🏀", "🏈", "⚾️", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🪃", "🥅", "⛳️", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛹", "🛼", "🛷", "⛸", "🥌", "🎿", "⛷", "🏂", "🏋️‍♀️", "🏋️", "🤼‍♀️", "🤼", "🤸‍♀️", "🤸", "⛹️‍♀️", "⛹️", "🤺", "🤾‍♀️", "🤾", "🏌️‍♀️", "🏌️", "🏇", "🧘‍♀️", "🧘", "🏄‍♀️", "🏄", "🏊‍♀️", "🏊", "🤽‍♀️", "🤽", "🚣‍♀️", "🚣", "🧗‍♀️", "🧗", "🚴‍♀️", "🚴", "🚵‍♀️", "🚵", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖", "🎟", "🎫", "🎪", "🎭", "🎨", "🎬", "🎤", "🎧", "🎼", "🎹", "🥁", "🪘", "🎷", "🎺", "🎸", "🪕", "🎻", "🎲", "♟", "🎯", "🎳", "🎮", "🎰", "🧩"],
+            "🚗": ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎", "🚓", "橫", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🏍", "🛵", "🚲", "🛴", "🛹", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛸", "🚁", "⛵️", "🛶", "🚤", "🛳", "⛴", "🚢", "⚓️", "🛟", "🚀", "🛸", "🗺", "🧭", "🏔", "⛰", "🌋", "🗻", "🏕", "🏖", "🏜", "🏝", "🏞", "🏟", "🏛", "🏗", "🧱", "🏘", "🏚", "🏠", "🏡", "🏢", "🏣", "🏤", "🏦", "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪️", "🕌", "🛕", "🕋", "⛩", "⛲️", "⛺️", "🌁", "🌃", "🏙", "🌄", "🌅", "🌆", "🌇", "🌉", "🎠", "🎡", "🎢"],
+            "💡": ["⌚️", "📱", "📲", "💻", "⌨️", "🖥", "🖨", "🖱", "🖲", "🕹", "🗜", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽", "🎞", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙", "🎚", "🎛", "🧭", "⏱", "⏲", "⏰", "🕰", "⌛️", "⏳", "📡", "🔋", "🔌", "💡", "🔦", "🕯", "🪔", "🧯", "🛢", "💸", "💵", "💴", "💶", "💷", "🪙", "💰", "💳", "💎", "⚖️", "🪜", "🧰", "🪛", "🔧", "🔨", "⚒", "🛠", "⛏", "🪓", "⚙️", "🧱", "🪨", "🪵", "⛓", "🪝", "🔫", "💣", "🔪", "🗡", "⚔️", "🛡", "🚬", "⚰️", "🪦", "⚱️", "🔮", "🧿", "📿", "💈", "🧪", "🧫", "🧬", "🔬", "🔭", "📡", "🎈", "🎉", "🎊", "🧧", "🎀", "🎁", "🪄", "🪅", "🎎", "🎏", "🎐", "✉️", "📩", "📨", "📧", "💌", "📥", "📤", "📦", "🏷", "📪", "📫", "📬", "📭", "📮", "🗳", "✏️", "✒️", "🖋", "🖊", "🖌", "🖍", "📝", "📁", "📂", "🗂", "📅", "📆", "🗒", "🗓", "📇", "📈", "📉", "📊", "📋", "📌", "📍", "📎", "🖇", "📐", "📏", "✂️", "🗃", "🗄", "🗑", "🔒", "🔓", "🔏", "🔐", "🔑", "🗝", "🔨", "🪓", "🩹", "🩺", "🩸", "🩻", "🛌", "🛋", "🪑", "🚽", "🪠", "🚿", "🛁", "🧼", "🪥", "🪮", "🧽", "🧴", "🛎", "🚪", "🪞", "🪟", "🧺", "🧹", "🧸", "🪆", "🧷", "🧦", "👗", "👘", "👚", "👛", "👜", "👝", "🎒", "👞", "👟", "🥾", "🥿", "👠", "👡", "👢", "👑", "👒", "🎩", "🎓", "🧢", "⛑", "💄", "💍", "💎"]
+        }
+
+        for cat_name, emojis in categories.items():
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            
+            content_widget = QWidget()
+            content_widget.setStyleSheet(f"background-color: {bg_color};")
+            
+            grid = QGridLayout(content_widget)
+            grid.setContentsMargins(6, 6, 6, 6)
+            grid.setSpacing(4)
+            
+            # Populate grid
+            cols = 8
+            for i, emoji in enumerate(emojis):
+                btn = QPushButton(emoji)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.clicked.connect(lambda checked, e=emoji: self.on_emoji_clicked(e))
+                row = i // cols
+                col = i % cols
+                grid.addWidget(btn, row, col)
+                
+            scroll.setWidget(content_widget)
+            tab_widget.addTab(scroll, cat_name)
+
+    def on_emoji_clicked(self, emoji):
+        self.selected_emoji = emoji
+        self.accept()
+
+
+# =====================================================================
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
 # =====================================================================
 class PIRCHMainWindow(QMainWindow):
@@ -554,7 +668,15 @@ class PIRCHMainWindow(QMainWindow):
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("พิมพ์ข้อความแชท หรือพิมพ์คำสั่ง เช่น /join #pyqt6 จากนั้นกด Enter...")
         self.message_input.returnPressed.connect(self.send_message)
+        self.message_input.installEventFilter(self)
         bottom_layout.addWidget(self.message_input)
+
+        # ปุ่มเลือก Emoji UTF-8 (Emoji Button)
+        self.emoji_btn = QPushButton("😊")
+        self.emoji_btn.setToolTip("เลือก Emoji UTF-8")
+        self.emoji_btn.setFixedWidth(35)
+        self.emoji_btn.clicked.connect(self.show_emoji_picker)
+        bottom_layout.addWidget(self.emoji_btn)
 
         self.send_btn = QPushButton("Send")
         self.send_btn.clicked.connect(self.send_message)
@@ -779,11 +901,17 @@ class PIRCHMainWindow(QMainWindow):
         # เข้าร่วมห้องแชทอัตโนมัติหากมีการระบุไว้
         auto_chan = self.channel_input.text().strip()
         if auto_chan:
-            if not auto_chan.startswith("#"):
-                auto_chan = "#" + auto_chan
-            self.current_channel = auto_chan
-            self.get_or_create_channel_tab(auto_chan)
-            self.irc_worker.send_line(f"JOIN {auto_chan}")
+            channels = [c.strip() for c in auto_chan.split(",") if c.strip()]
+            for chan in channels:
+                if not chan.startswith("#") and not chan.startswith("&"):
+                    chan = "#" + chan
+                self.current_channel = chan
+                self.get_or_create_channel_tab(chan)
+            if self.irc_worker:
+                normalized_args = ",".join(
+                    [("#" + c if (not c.startswith("#") and not c.startswith("&")) else c) for c in channels]
+                )
+                self.irc_worker.send_line(f"JOIN {normalized_args}")
 
     def on_irc_disconnected(self):
         """ ทำงานเมื่อปิดการเชื่อมต่อ """
@@ -1011,38 +1139,192 @@ class PIRCHMainWindow(QMainWindow):
 
         formatted_message = self.format_mirc_text(message)
 
-        if is_mention and self.mention_notify_enabled:
-            # ใช้สีเหลือง/ทองอร่าม สไตล์แจ้งเตือน ไฮไลท์หรูหรา และปี๊บเสียง
-            bg_color = "rgba(245, 158, 11, 0.15)" if self.current_theme == "dark" else "rgba(245, 158, 11, 0.08)"
-            border_left = "2px solid #f59e0b"
+        # ระบุว่าเป็น Private Message (PM) หรือไม่
+        is_pm = not target.startswith("#") and not target.startswith("&")
+
+        if is_pm:
+            bg_color = "rgba(236, 72, 153, 0.05)" if self.current_theme == "dark" else "rgba(236, 72, 153, 0.08)"
+            border_left = "3px solid #ec4899"
+            nick_color = "#ec4899"
+            text_color = "#fbcfe8" if self.current_theme == "dark" else "#831843"
+            
+            if not is_me:
+                self.play_alert_sound()
+        elif is_mention and self.mention_notify_enabled:
+            bg_color = "rgba(245, 158, 11, 0.08)" if self.current_theme == "dark" else "rgba(245, 158, 11, 0.12)"
+            border_left = "3px solid #f59e0b"
             nick_color = "#f59e0b"
             text_color = "#fef08a" if self.current_theme == "dark" else "#78350f"
-            
-            # เล่นเสียงเตือน Beep สไตล์ย้อนยุค
-            try:
-                from PyQt6.QtWidgets import QApplication
-                QApplication.beep()
-            except Exception:
-                pass
+
+            self.play_alert_sound()
         else:
             bg_color = "transparent"
             border_left = "none"
-            nick_color = "#4f46e5" if is_me else "#059669"
-            text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
+            nick_color = "#3b82f6" if is_me else "#10b981"
+            text_color = "#f1f5f9" if self.current_theme == "dark" else "#1e293b"
         
-        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; padding: 2px 6px; background-color: {bg_color}; border-left: {border_left};'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{formatted_message}</span></div>"
+        msg_html = f"""
+        <div style='margin-bottom: 5px; padding: 3px 10px; background-color: {bg_color}; border-left: {border_left}; line-height: 140%;'>
+            <span style='color: {time_color}; font-family: monospace; font-size: 12px; margin-right: 8px;'>[{current_time}]</span>
+            <b style='color: {nick_color}; font-family: "Segoe UI";'>&lt;{nick}&gt;</b>
+            <span style='color: {text_color}; font-family: "Segoe UI"; margin-left: 4px;'>{formatted_message}</span>
+        </div>
+        """
         
-        target_key = target.lower()
-        if target_key in self.rooms:
-            self.rooms[target_key]["chat_display"].append(msg_html)
+        if is_pm:
+            room_name = target if is_me else nick
+            room_key = room_name.lower()
+            
+            if room_key not in self.rooms:
+                room = self.get_or_create_channel_tab(room_name)
+                welcome_html = f"<div style='color: #64748b; font-size: 12px; padding: 5px 10px;'>[{current_time}] *** เริ่มต้นการสนทนาส่วนตัวกับ {room_name}</div>"
+                room["chat_display"].append(welcome_html)
+            else:
+                room = self.rooms[room_key]
+                
+            room["chat_display"].append(msg_html)
         else:
-            # หากเป็นช่องใหม่ที่ยังไม่มีแท็บ ให้สร้างแถบสนทนาใหม่
-            if target.startswith("#"):
+            target_key = target.lower()
+            if target_key in self.rooms:
+                self.rooms[target_key]["chat_display"].append(msg_html)
+            else:
                 room = self.get_or_create_channel_tab(target)
                 room["chat_display"].append(msg_html)
+
+    def play_alert_sound(self):
+        """ เล่นเสียงเตือนคุณภาพสูง คมชัดขึ้นสำหรับ Windows 10 / 11 โดยไม่ทำให้โปรแกรมค้าง """
+        def run_sound():
+            try:
+                import winsound
+                # เล่นเสียงเตือนแบบไล่ระดับเสียง (Chirp) ความยาวสั้นๆ คมชัดและดังขึ้นกว่า Beep ธรรมดา
+                winsound.Beep(1800, 100)
+                winsound.Beep(2300, 120)
+            except Exception:
+                try:
+                    from PyQt6.QtWidgets import QApplication
+                    QApplication.beep()
+                except Exception:
+                    pass
+        import threading
+        threading.Thread(target=run_sound, daemon=True).start()
+
+    def show_user_list_context_menu(self, pos, user_list_widget):
+        """ แสดงเมนูคลิกขวาสำหรับสมาชิกในห้องแชท """
+        item = user_list_widget.itemAt(pos)
+        if not item:
+            return
+            
+        raw_nick = item.text().strip()
+        if not raw_nick:
+            return
+            
+        clean_nick = self.clean_nick(raw_nick)
+        my_nick = self.nick_input.text().strip()
+        
+        menu = QMenu(self)
+        if self.current_theme == "dark":
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #1e293b;
+                    color: #f1f5f9;
+                    border: 1px solid #475569;
+                }
+                QMenu::item:selected {
+                    background-color: #6366f1;
+                    color: #ffffff;
+                }
+            """)
+        else:
+            menu.setStyleSheet("""
+                QMenu {
+                    background-color: #ffffff;
+                    color: #1e293b;
+                    border: 1px solid #cbd5e1;
+                }
+                QMenu::item:selected {
+                    background-color: #6366f1;
+                    color: #ffffff;
+                }
+            """)
+            
+        action_tag = menu.addAction(f"🏷️ แทกชื่อ ({clean_nick})")
+        action_query = None
+        if clean_nick.lower() != my_nick.lower():
+            action_query = menu.addAction(f"💬 ส่งข้อความส่วนตัว (Query)")
+            
+        action = menu.exec(user_list_widget.mapToGlobal(pos))
+        
+        if action == action_tag:
+            self.tag_user(clean_nick)
+        elif action_query and action == action_query:
+            self.on_user_double_clicked(item)
+
+    def tag_user(self, nick):
+        """ แทกชื่อเพื่อนลงในช่องพิมพ์ข้อความแชท """
+        current_text = self.message_input.text()
+        if not current_text:
+            self.message_input.setText(f"{nick}: ")
+        else:
+            if current_text.endswith(" "):
+                self.message_input.setText(f"{current_text}{nick} ")
             else:
-                # กรณีเป็นข้อความกระซิบเดี่ยว (Private Message) ให้แสดงไว้ที่ห้อง Status พร้อมข้อความระบุชัดเจน
-                self.status_display.append(f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{formatted_message}</span></div>")
+                self.message_input.setText(f"{current_text} {nick} ")
+        
+        self.message_input.setFocus()
+        self.message_input.setCursorPosition(len(self.message_input.text()))
+
+    def autocomplete_nick(self):
+        """ ฟังก์ชันเดาชื่อเล่นอัตโนมัติเมื่อผู้ใช้กดปุ่ม Tab ในช่องแชท """
+        current_idx = self.tab_widget.currentIndex()
+        current_text = self.tab_widget.tabText(current_idx)
+        current_text_clean = current_text.split(" (")[0].lower()
+        
+        if current_text_clean not in self.rooms:
+            return
+            
+        users = self.rooms[current_text_clean]["users"]
+        if not users:
+            return
+            
+        input_text = self.message_input.text()
+        cursor_pos = self.message_input.cursorPosition()
+        
+        text_before_cursor = input_text[:cursor_pos]
+        parts = text_before_cursor.split(" ")
+        if not parts:
+            return
+            
+        last_word = parts[-1]
+        if not last_word:
+            return
+            
+        matches = []
+        for u in users:
+            clean_u = self.clean_nick(u)
+            if clean_u.lower().startswith(last_word.lower()):
+                matches.append(clean_u)
+                
+        if not matches:
+            return
+            
+        matched_nick = matches[0]
+        parts[-1] = matched_nick
+        
+        is_first_word = len(parts) == 1
+        suffix = ": " if is_first_word else " "
+        
+        new_text_before = " ".join(parts) + suffix
+        new_text_after = input_text[cursor_pos:]
+        
+        self.message_input.setText(new_text_before + new_text_after)
+        self.message_input.setCursorPosition(len(new_text_before))
+
+    def eventFilter(self, obj, event):
+        if obj == self.message_input and event.type() == event.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Tab:
+                self.autocomplete_nick()
+                return True
+        return super().eventFilter(obj, event)
 
     def clean_nick(self, nick):
         """ ล้างค่าสัญลักษณ์หน้าชื่อผู้ใช้งาน เช่น @, +, %, & และ ~ """
@@ -1316,6 +1598,31 @@ class PIRCHMainWindow(QMainWindow):
             
         self.disconnect_irc()
 
+    def show_emoji_picker(self):
+        """ แสดงหน้าต่างเลือก Emoji UTF-8 ข้างบนปุ่ม Emoji """
+        is_dark = (self.current_theme == "dark")
+        picker = EmojiPicker(self, is_dark=is_dark)
+        
+        # คำนวณตำแหน่งแสดงผลให้ลอยอยู่เหนือปุ่ม Emoji
+        btn_pos = self.emoji_btn.mapToGlobal(self.emoji_btn.rect().topLeft())
+        x = btn_pos.x() - (picker.width() - self.emoji_btn.width()) // 2
+        y = btn_pos.y() - picker.height() - 5
+        
+        # ป้องกันไม่ให้ออกนอกขอบจอซ้าย
+        if x < 10:
+            x = 10
+            
+        picker.move(x, y)
+        if picker.exec():
+            if picker.selected_emoji:
+                # แทรก emoji ลงไปในกล่องพิมพ์ ณ ตำแหน่งเคอร์เซอร์ปัจจุบัน
+                cursor_pos = self.message_input.cursorPosition()
+                current_text = self.message_input.text()
+                new_text = current_text[:cursor_pos] + picker.selected_emoji + current_text[cursor_pos:]
+                self.message_input.setText(new_text)
+                self.message_input.setFocus()
+                self.message_input.setCursorPosition(cursor_pos + len(picker.selected_emoji))
+
     def send_message(self):
         """ ส่งข้อความแชท หรือส่งคำสั่ง """
         text = self.message_input.text().strip()
@@ -1331,13 +1638,18 @@ class PIRCHMainWindow(QMainWindow):
             args = parts[1] if len(parts) > 1 else ""
             
             if cmd == "JOIN":
-                if not args.startswith("#"):
-                    args = "#" + args
-                # สร้างแท็บไว้ล่วงหน้ารอข้อมูลแชทตอบกลับ
-                self.get_or_create_channel_tab(args)
-                self.current_channel = args
-                if self.irc_worker:
-                    self.irc_worker.send_line(f"JOIN {args}")
+                if args:
+                    channels = [c.strip() for c in args.split(",") if c.strip()]
+                    for chan in channels:
+                        if not chan.startswith("#") and not chan.startswith("&"):
+                            chan = "#" + chan
+                        self.get_or_create_channel_tab(chan)
+                        self.current_channel = chan
+                    if self.irc_worker:
+                        normalized_args = ",".join(
+                            [("#" + c if (not c.startswith("#") and not c.startswith("&")) else c) for c in channels]
+                        )
+                        self.irc_worker.send_line(f"JOIN {normalized_args}")
             elif cmd == "PART":
                 chan = args if args else self.current_channel
                 if chan:
