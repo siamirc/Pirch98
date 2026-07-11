@@ -229,7 +229,20 @@ class IRCWorker(QObject):
             except Exception:
                 pass
             self.socket = None
-        self.disconnected.emit()
+        #self.disconnected.emit()
+        try:
+            # ตรวจสอบก่อนว่าวัตถุฝั่ง PyQt6 ยังมีตัวตนอยู่ในหน่วยความจำจริง ไม่ใช่ Runtime Error
+            # โดยเรียกคำสั่งตรวจสอบภายในเพื่อเช็กสถานะการมีอยู่
+            if hasattr(self, 'disconnected'):
+                self.disconnected.emit()
+        except RuntimeError:
+            # หากวัตถุฝั่ง C/C++ โดนระเบิดทิ้งไปแล้ว ให้ปล่อยผ่าน (Pass) ไปเลย ไม่ต้องทำแอปเด้งหลุด
+            print("System System: IRCWorker object was already deleted, skipping signal emit.")
+            pass
+        except Exception as e:
+            print(f"Cleanup Signal Error: {e}")
+            pass
+        
 
 
 # =====================================================================
@@ -291,10 +304,18 @@ class EqualizerVisualizer(QWidget):
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
 # =====================================================================
 class PIRCHMainWindow(QMainWindow):
+    # สัญญาณสำหรับอัปเดตสถานะและจัดการส่งไฟล์จาก Thread อัปโหลดเบื้องหลังอย่างปลอดภัย
+    upload_status_signal = pyqtSignal(str)
+    upload_success_signal = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("pyIRCH98 - Classic IRC Client")
         self.resize(800, 600)
+        
+        # เชื่อมต่อสัญญาณควบคุมระบบอัปโหลดไฟล์เสร็จสิ้นแบบ Thread-safe
+        self.upload_status_signal.connect(self.append_system_msg)
+        self.upload_success_signal.connect(self.handle_upload_success)
         
         # ตัวแปรสำหรับ Thread และ Connection
         self.irc_thread = None
@@ -895,9 +916,25 @@ class PIRCHMainWindow(QMainWindow):
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         
-        # หากตรวจพบคำสั่งหรือรหัสสถานะที่ถูกระบุให้ไปแสดงที่ห้อง Status โดยเฉพาะ
+        # ตรวจสอบเพื่อแยกแยะข้อความระบบ/NOTICE/Numeric Replies ไปที่แท็บ Status เสมอ
+        is_status_msg = False
+        status_codes = ["001", "002", "003", "004", "005", "251", "252", "253", "254", "255", "265", "266", "396"]
+        
         if text.startswith("[STATUS]"):
-            clean_text = text[len("[STATUS]"):].strip()
+            is_status_msg = True
+        else:
+            # ดักจับรหัสสถานะตัวเลข (Numeric Replies) หรือข้อความ NOTICE
+            for code in status_codes:
+                if f"[{code}]" in text or text.startswith(code):
+                    is_status_msg = True
+                    break
+            if "NOTICE" in text or "[NOTICE]" in text:
+                is_status_msg = True
+
+        if is_status_msg:
+            clean_text = text
+            if text.startswith("[STATUS]"):
+                clean_text = text[len("[STATUS]"):].strip()
             formatted_clean = self.format_mirc_text(clean_text)
             text_color = "#475569" if self.current_theme == "light" else "#94a3b8"
             msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>[{current_time}]</span> <span style='color: {text_color};'>{formatted_clean}</span></div>"
@@ -1197,8 +1234,6 @@ class PIRCHMainWindow(QMainWindow):
             self.rooms[chan_key]["users"] = current_stored_users
             self.update_user_list_ui(channel, current_stored_users)
 
-
-
     def update_user_list_ui(self, channel, users_list):
         """ จัดเรียงลำดับสิทธิ์ผู้ใช้ และอัปเดตตัวเลขจำนวนคนแบบเรียลไทม์ถูกต้องตามความต้องการของผู้ใช้ """
         # จัดเรียงตามระดับยศ: ~ Owner, & Admin, @ Op, % HalfOp, + Voice จากนั้นผู้ใช้ธรรมดา
@@ -1291,6 +1326,89 @@ class PIRCHMainWindow(QMainWindow):
             self.status_display.append(err_html)
             
         self.disconnect_irc()
+
+    def select_and_send_file(self):
+        """ เปลี่ยนระบบส่งไฟล์จาก DCC เป็นการอัปโหลดขึ้น tmpfiles.org แล้วส่งลิงก์เข้าห้องแชทอัตโนมัติ """
+        if self.irc_worker is not None:
+            # 1. นำเข้าไลบรารีจัดการไฟล์และเครือข่ายเว็บ
+            from PyQt6.QtWidgets import QFileDialog
+            import requests
+            import threading
+            import os
+
+            # 2. เปิดหน้าต่างให้ยูสเซอร์เลือกไฟล์จากในคอมพิวเตอร์ตามปกติ
+            file_path, _ = QFileDialog.getOpenFileName(self, "เลือกไฟล์หรือรูปภาพที่ต้องการส่ง", "", "All Files (*)")
+            if not file_path:
+                return  # ยูสเซอร์กดกดยกเลิก
+                
+            # ตรวจสอบขนาดไฟล์ไม่ให้เกิน 100MB ตามโควตาของ tmpfiles.org
+            if os.path.getsize(file_path) > 100 * 1024 * 1024:
+                self.append_system_msg("ระบบ: ขนาดไฟล์ใหญ่เกิน 100 MB ไม่สามารถอัปโหลดได้")
+                return
+
+            filename = os.path.basename(file_path)
+            self.append_system_msg(f"ระบบ: กำลังอัปโหลดไฟล์ {filename} ขึ้นระบบคลาวด์ชั่วคราว...")
+
+            # 3. แยกเธรด (Threading) ในการอัปโหลด เพื่อป้องกันไม่ให้หน้าต่างโปรแกรมค้างขณะส่งไฟล์ขนาดใหญ่
+            def upload_worker():
+                try:
+                    # พิกัด API สำหรับอัปโหลดของเว็บ tmpfiles.org
+                    api_url = "https://tmpfiles.org/api/v1/upload"
+                    
+                    with open(file_path, 'rb') as f:
+                        files = {'file': f}
+                        response = requests.post(api_url, files=files, timeout=60)
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        if res_data.get("status") == "success":
+                            # ดึงลิงก์ดาวน์โหลดตรงมาประมวลผล
+                            raw_url = res_data["data"]["url"]
+                            
+                            # แปลงฟอร์แมตลิงก์จากหน้าเว็บทั่วไป ให้กลายเป็นลิงก์ดาวน์โหลด/แสดงภาพตรง (Direct Link)
+                            # เช่น จาก tmpfiles.org/123 -> tmpfiles.org/dl/123 เพื่อให้กดดูรูปได้ทันที
+                            direct_download_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                            
+                            # ส่งลิงก์กลับไปจัดการที่ GUI thread อย่างปลอดภัย
+                            self.upload_success_signal.emit(direct_download_url)
+                        else:
+                            self.upload_status_signal.emit("ระบบ: เซิร์ฟเวอร์ปฏิเสธการอัปโหลดไฟล์")
+                    else:
+                        self.upload_status_signal.emit(f"ระบบ: อัปโหลดล้มเหลว (Error Code: {response.status_code})")
+                except Exception as e:
+                    self.upload_status_signal.emit(f"ระบบ: เกิดข้อผิดพลาดระหว่างอัปโหลด: {e}")
+
+            # สั่งให้เธรดอัปโหลดเริ่มต้นทำงานเบื้องหลังเบื้องหลัง
+            threading.Thread(target=upload_worker, daemon=True).start()
+        else:
+            self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์ ไม่สามารถส่งไฟล์ได้")
+
+    def handle_upload_success(self, direct_download_url):
+        """ ฟังก์ชัน Callback บน Main Thread เมื่ออัปโหลดไฟล์สำเร็จและได้ลิงก์ตรงมาแล้ว """
+        # ดึงชื่อห้องแชทปัจจุบันที่ผู้ใช้เปิดหน้าจอคู่อยู่
+        current_tab_index = self.tab_widget.currentIndex()
+        current_room_name = self.tab_widget.tabText(current_tab_index)
+        
+        # ตรวจสอบว่าอยู่ในห้องแชทหรือแท็บกระซิบส่วนตัว เพื่อส่งข้อความออกไปหาเพื่อน
+        if current_room_name and not current_room_name.startswith("Status"):
+            # 1. ดึงข้อความเก่าในช่องพิมพ์เก็บไว้ก่อน (เผื่อยูสเซอร์พิมพ์ค้างไว้)
+            old_input_text = self.message_input.text()
+            
+            # 2. ยัดลิงก์รูปภาพเข้าไปในกล่องพิมพ์ด้านล่างของแอป
+            self.message_input.setText(direct_download_url)
+            
+            # 3. สั่งรันฟังก์ชันกดส่งข้อความของตัวแอป (ระบบจะยิง PRIVMSG เข้าเซิร์ฟเวอร์ให้ทันที)
+            self.send_message()
+            
+            # 4. คืนค่าข้อความเก่าที่ยูสเซอร์พิมพ์ค้างไว้กลับมาที่กล่องพิมพ์
+            if old_input_text:
+                self.message_input.setText(old_input_text)
+                
+            # แสดงลิงก์บนหน้าจอตัวเองด้วย
+            my_nick = self.nick_input.text().strip()
+            self.on_message_received(current_room_name, my_nick, direct_download_url)
+        else:
+            self.append_system_msg(f"ระบบ: อัปโหลดไฟล์สำเร็จ! ลิงก์ตรงของคุณคือ: {direct_download_url}")
 
     def send_message(self):
         """ ส่งข้อความแชท หรือส่งคำสั่ง """
@@ -1421,99 +1539,85 @@ class PIRCHMainWindow(QMainWindow):
                 self.on_message_received(target_chan, my_nick, text)
 
     def select_and_send_file(self):
-        """ เปิดกล่องเลือกไฟล์และทำการจำลองการส่งไฟล์/รูปภาพ """
-        from PyQt6.QtWidgets import QFileDialog, QTextBrowser
-        from PyQt6.QtCore import QTimer
-        import os
-        import base64
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "เลือกไฟล์หรือรูปภาพเพื่อส่ง", "", "All Files (*);;Images (*.png *.jpg *.jpeg *.gif *.webp)"
-        )
-        if not file_path or not os.path.exists(file_path):
-            return
-
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-        
-        # จัดขนาดความละเอียดให้อ่านเข้าใจง่าย
-        if file_size > 1024 * 1024:
-            size_str = f"{file_size / (1024 * 1024):.2f} MB"
-        else:
-            size_str = f"{file_size / 1024:.1f} KB"
-
-        is_image = file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
-        
-        # อ่านไฟล์เป็น base64 เพื่อแสดงพรีวิวจำลองได้ทันที
-        data_url = ""
-        if is_image:
-            try:
-                with open(file_path, "rb") as f:
-                    encoded = base64.b64encode(f.read()).decode('utf-8')
-                    mime_type = "image/png"
-                    if file_name.lower().endswith('.jpg') or file_name.lower().endswith('.jpeg'):
-                        mime_type = "image/jpeg"
-                    elif file_name.lower().endswith('.gif'):
-                        mime_type = "image/gif"
-                    elif file_name.lower().endswith('.webp'):
-                        mime_type = "image/webp"
-                    
-                    data_url = f"data:{mime_type};base64,{encoded}"
-            except Exception as e:
-                print(f"Error reading file for base64: {e}")
-
-        # เพิ่มข้อความการส่งไฟล์เข้าไปในหน้าห้องแชทจำลองที่กำลังเลือกอยู่
-        current_tab_index = self.tab_widget.currentIndex()
-        tab_text = self.tab_widget.tabText(current_tab_index)
-        tab_text_clean = tab_text.split(" (")[0]
-        
-        # แสดงข้อความในฝั่งตนเองก่อน
-        from datetime import datetime
-        time_str = datetime.now().strftime("%H:%M")
-        
-        msg_html = f"<div style='margin-bottom: 4px;'><span style='color: #64748b;'>[{time_str}]</span> " \
-                   f"<span style='color: #818cf8; font-weight: bold;'>&lt;{self.nick_input.text()}&gt;</span> " \
-                   f"<span style='color: #10b981; font-weight: bold;'>[ส่งไฟล์สำเร็จ] 📎 {file_name} ({size_str})</span></div>"
-        
-        if is_image and data_url:
-            msg_html += f"<div style='margin-top: 4px; margin-bottom: 8px;'><img src='{data_url}' width='240' style='border: 1px solid #cbd5e1; border-radius: 6px;' /></div>"
-        else:
-            msg_html += f"<div style='margin-top: 4px; margin-bottom: 8px; font-family: monospace; font-size: 11px; color: #64748b; background: #e2e8f0; padding: 6px; border-radius: 4px;'>📄 {file_name} ({size_str}) [ดาวน์โหลดจำลอง]</div>"
-
-        # แสดงข้อมูลบน chat browser ของแท็บปัจจุบัน
-        current_widget = self.tab_widget.currentWidget()
-        if current_widget:
-            chat_display = current_widget.findChild(QTextBrowser)
-            if chat_display:
-                chat_display.append(msg_html)
-
-        # หากมีการเชื่อมต่อจริง ให้ส่งลิงก์จำลอง (เช่นอัปโหลดไปยังบริการแชร์ไฟล์) เพื่อไม่ให้กระทบต่อ protocol IRC ปกติ
-        #if self.irc_worker and self.irc_worker.is_connected
+        """ เปลี่ยนระบบส่งไฟล์จาก DCC เป็นการอัปโหลดขึ้น tmpfiles.org แล้วส่งลิงก์เข้าห้องแชทอัตโนมัติ """
         if self.irc_worker is not None:
-            target = tab_text_clean
-            self.irc_worker.send_line(f"PRIVMSG {target} :[ไฟล์สำเร็จ] 📎 {file_name} ({size_str})")
-            pass
-        else:
-            # กรณีที่ยังไม่ได้ต่อเซิร์ฟเวอร์ ให้แจ้งเตือนระบบ (ปรับให้ตรงกับชื่อฟังก์ชันเดิมของคุณ)
-            self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์ ไม่สามารถส่งไฟล์ได้")
-            
-        # มีเสียงตอบรับหรือแชทตอบกลับจากบอทหลังจาก 1 วินาที เพื่อให้ผู้ใช้รู้สึกฟินและเป็นธรรมชาติ
-        def bot_reply():
-            bot_name = "Python_Expert" if tab_text_clean == "#pyqt6" else "PyQt6_Fan"
-            reply_text = f"ได้รับรูปภาพ \"{file_name}\" เรียบร้อยแล้วครับ! ภาพสวยคมชัดมาก 🖼️✨" if is_image \
-                else f"ได้รับไฟล์ \"{file_name}\" ({size_str}) เรียบร้อยแล้วครับ ขอบคุณที่ร่วมแบ่งปันข้อมูล! 📂🤖"
-            
-            bot_html = f"<div style='margin-bottom: 4px;'><span style='color: #64748b;'>[{time_str}]</span> " \
-                       f"<span style='color: #c084fc; font-weight: bold;'>&lt;{bot_name}&gt;</span> " \
-                       f"<span style='color: #475569;'>{reply_text}</span></div>"
-            
-            if current_widget:
-                chat_display = current_widget.findChild(QTextBrowser)
-                if chat_display:
-                    chat_display.append(bot_html)
+            # 1. นำเข้าไลบรารีจัดการไฟล์และเครือข่ายเว็บ
+            from PyQt6.QtWidgets import QFileDialog
+            import requests
+            import threading
+            import os
 
-        # จำลองการส่งข้อความตอบกลับจากระบบหรือบอท
-        QTimer.singleShot(1000, bot_reply)
+            # 2. เปิดหน้าต่างให้ยูสเซอร์เลือกไฟล์จากในคอมพิวเตอร์ตามปกติ
+            file_path, _ = QFileDialog.getOpenFileName(self, "เลือกไฟล์หรือรูปภาพที่ต้องการส่ง", "", "All Files (*)")
+            if not file_path:
+                return  # ยูสเซอร์กดกดยกเลิก
+                
+            # ตรวจสอบขนาดไฟล์ไม่ให้เกิน 100MB ตามโควตาของ tmpfiles.org
+            if os.path.getsize(file_path) > 100 * 1024 * 1024:
+                self.append_system_msg("ระบบ: ขนาดไฟล์ใหญ่เกิน 100 MB ไม่สามารถอัปโหลดได้")
+                return
+
+            filename = os.path.basename(file_path)
+            self.append_system_msg(f"ระบบ: กำลังอัปโหลดไฟล์ {filename} ขึ้นระบบคลาวด์ชั่วคราวชั่วคราว...")
+
+            # 3. แยกเธรด (Threading) ในการอัปโหลด เพื่อป้องกันไม่ให้หน้าต่างโปรแกรมค้างขณะส่งไฟล์ขนาดใหญ่
+            def upload_worker():
+                try:
+                    # พิกัด API สำหรับอัปโหลดของเว็บ tmpfiles.org
+                    api_url = "https://tmpfiles.org/api/v1/upload"
+                    
+                    with open(file_path, 'rb') as f:
+                        files = {'file': f}
+                        response = requests.post(api_url, files=files, timeout=60)
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        if res_data.get("status") == "success":
+                            # ดึงลิงก์ดาวน์โหลดตรงมาประมวลผล
+                            raw_url = res_data["data"]["url"]
+                            
+                            # แปลงฟอร์แมตลิงก์จากหน้าเว็บทั่วไป ให้กลายเป็นลิงก์ดาวน์โหลด/แสดงภาพตรง (Direct Link)
+                            # เช่น จาก tmpfiles.org/123 -> tmpfiles.org/dl/123 เพื่อให้กดดูรูปได้ทันที
+                            direct_download_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                            
+                            # 4. ดีดลิงก์กลับไปพิมพ์ส่งลงในห้องแชทปัจจุบันโดยอัตโนมัติ
+                            # ดึงชื่อห้องแชทปัจจุบันที่ผู้ใช้เปิดหน้าจอคู่อยู่
+                            current_tab_index = self.tab_widget.currentIndex()
+                            current_room_name = self.tab_widget.tabText(current_tab_index)
+                            
+                            # ตรวจสอบว่าอยู่ในห้องแชทหรือแท็บกระซิบส่วนตัว เพื่อส่งข้อความออกไปหาเพื่อน
+                            if current_room_name and not current_room_name.startswith("Status"):
+                                # ปรับชื่อคำสั่งให้ตรงกับฟังก์ชันส่งข้อความแชทของคุณ (เช่น send_chat_message หรือ send_raw)
+                                #self.irc_socket.send(f"PRIVMSG {current_room_name} :{direct_download_url}\r\n".encode("utf-8"))
+                                #self.send_message_to_irc(current_room_name, direct_download_url)
+                                #self.send_chat_msg(current_room_name, direct_download_url) 
+                                # 1. ดึงข้อความเก่าในช่องพิมพ์เก็บไว้ก่อน (เผื่อยูสเซอร์พิมพ์ค้างไว้)
+                                old_input_text = self.message_input.text()
+                                
+                                # 2. ยัดลิงก์รูปภาพเข้าไปในกล่องพิมพ์ด้านล่างของแอป
+                                self.message_input.setText(direct_download_url)
+                                
+                                # 3. สั่งรันฟังก์ชันกดส่งข้อความของตัวแอป (ระบบจะยิง PRIVMSG เข้าเซิร์ฟเวอร์ให้ทันที)
+                                self.send_message()
+                                
+                                # 4. คืนค่าข้อความเก่าที่ยูสเซอร์พิมพ์ค้างไว้กลับมาที่กล่องพิมพ์
+                                if old_input_text:
+                                    self.message_input.setText(old_input_text)                                
+                                # แสดงลิงก์บนหน้าจอตัวเองด้วย
+                                my_nick = self.nick_input.text().strip()
+                                self.on_message_received(current_room_name, my_nick, direct_download_url)
+                        else:
+                            self.append_system_msg("ระบบ: เซิร์ฟเวอร์ปฏิเสธการอัปโหลดไฟล์")
+                    else:
+                        self.append_system_msg(f"ระบบ: อัปโหลดล้มเหลว (Error Code: {response.status_code})")
+                except Exception as e:
+                    self.append_system_msg(f"ระบบ: เกิดข้อผิดพลาดระหว่างอัปโหลด: {e}")
+
+            # สั่งให้เธรดอัปโหลดเริ่มต้นทำงานเบื้องหลังเบื้องหลัง
+            threading.Thread(target=upload_worker, daemon=True).start()
+        else:
+            self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์ ไม่สามารถส่งไฟล์ได้")
+
 
     def play_radio(self, station):
         """ เล่นสถานีวิทยุออนไลน์ที่กำหนด """
