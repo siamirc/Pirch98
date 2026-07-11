@@ -10,6 +10,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer
 from PyQt6.QtGui import QFont, QColor, QPainter, QBrush
+import sys
+import socket
+from datetime import datetime
+# 🌟 เพิ่มบรรทัดนี้เข้าไปด้านบนสุดของไฟล์ครับ
+import winsound 
 
 # =====================================================================
 # 1. คลาส IRCWorker สำหรับจัดการเชื่อมต่อและรับส่งข้อมูลผ่าน TCP Socket
@@ -572,6 +577,8 @@ class PIRCHMainWindow(QMainWindow):
         splitter.setStretchFactor(1, 20)
         chan_layout.addWidget(splitter)
         
+        user_list.itemDoubleClicked.connect(self.on_user_double_clicked)
+        
         self.tab_widget.addTab(chan_widget, channel)
         
         room_data = {
@@ -922,7 +929,7 @@ class PIRCHMainWindow(QMainWindow):
             self.status_display.append(msg_html)
 
     def on_message_received(self, target, nick, message):
-        """ เมื่อได้รับข้อความแชท """
+        """ เมื่อได้รับข้อความแชท จัดรูปแบบหน้าต่างให้เว้นช่องไฟมีย่อหน้าที่สวยงามอ่านง่าย """
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         is_me = nick == self.nick_input.text().strip()
@@ -936,52 +943,79 @@ class PIRCHMainWindow(QMainWindow):
         formatted_message = self.format_mirc_text(message)
 
         if is_mention and self.mention_notify_enabled:
-            # ใช้สีเหลือง/ทองอร่าม สไตล์แจ้งเตือน ไฮไลท์หรูหรา และปี๊บเสียง
-            bg_color = "rgba(245, 158, 11, 0.15)" if self.current_theme == "dark" else "rgba(245, 158, 11, 0.08)"
-            border_left = "2px solid #f59e0b"
+            bg_color = "rgba(245, 158, 11, 0.08)" if self.current_theme == "dark" else "rgba(245, 158, 11, 0.12)"
+            border_left = "3px solid #f59e0b"
             nick_color = "#f59e0b"
             text_color = "#fef08a" if self.current_theme == "dark" else "#78350f"
-            
-            # เล่นเสียงเตือน Beep สไตล์ย้อนยุค
+
+            try:
+                # สั่งเปิดเสียงแจ้งเตือนระบบมาตรฐานของ Windows (เสียงจะดังออกลำโพงหลักชัดเจน)
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            except Exception as e:
+                print(f"Sound Error: {e}")
+            """ 
             try:
                 from PyQt6.QtWidgets import QApplication
-                QApplication.beep()
-            except Exception:
+                QApplication.beep()                
+            except:
                 pass
+            """
         else:
             bg_color = "transparent"
             border_left = "none"
-            nick_color = "#4f46e5" if is_me else "#059669"
-            text_color = "#1e293b" if self.current_theme == "light" else "#f1f5f9"
-        
-        msg_html = f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; padding: 2px 6px; background-color: {bg_color}; border-left: {border_left};'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: {nick_color};'>&lt;{nick}&gt;</b> <span style='color: {text_color};'>{formatted_message}</span></div>"
+            nick_color = "#3b82f6" if is_me else "#10b981"
+            text_color = "#f1f5f9" if self.current_theme == "dark" else "#1e293b"
+
+        # ปรับปรุงสไตล์ HTML เพิ่มช่องไฟย่อหน้าด้านซ้าย (text-indent และ padding) ให้แยกเวลากับข้อความออกจากกันชัดเจน
+        msg_html = f"""
+        <div style='margin-bottom: 5px; padding: 3px 10px; background-color: {bg_color}; border-left: {border_left}; line-height: 140%;'>
+            <span style='color: {time_color}; font-family: monospace; font-size: 12px; margin-right: 8px;'>[{current_time}]</span>
+            <b style='color: {nick_color}; font-family: "Segoe UI";'>&lt;{nick}&gt;</b>
+            <span style='color: {text_color}; font-family: "Segoe UI"; margin-left: 4px;'>{formatted_message}</span>
+        </div>
+        """
         
         target_key = target.lower()
         if target_key in self.rooms:
             self.rooms[target_key]["chat_display"].append(msg_html)
         else:
-            # หากเป็นช่องใหม่ที่ยังไม่มีแท็บ ให้สร้างแถบสนทนาใหม่
             if target.startswith("#"):
                 room = self.get_or_create_channel_tab(target)
                 room["chat_display"].append(msg_html)
             else:
-                # กรณีเป็นข้อความกระซิบเดี่ยว (Private Message) ให้แสดงไว้ที่ห้อง Status พร้อมข้อความระบุชัดเจน
-                self.status_display.append(f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{formatted_message}</span></div>")
+                try:
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                except:
+                    pass
+                    
+                # กรณี Private Message กระซิบเดี่ยว จัดสไตล์ย่อหน้าให้อ่านง่ายเช่นกัน
+                self.status_display.append(
+                    f"<div style='padding: 3px 10px;'><span style='color: {time_color}; font-family: monospace; font-size: 12px; margin-right: 8px;'>[{current_time}]</span>"
+                    f"<b style='color: #ec4899;'>[กระซิบจาก {nick}]</b> <span style='color: {text_color};'>{formatted_message}</span></div>"
+                )
 
     def clean_nick(self, nick):
         """ ล้างค่าสัญลักษณ์หน้าชื่อผู้ใช้งาน เช่น @, +, %, & และ ~ """
         return nick.lstrip("@+%&~")
 
     def add_user_to_list(self, channel, nick):
-        """ เพิ่มผู้ใช้งานเข้าสู่ห้องแชทจำลอง/จริงแบบเรียลไทม์ และป้องกันชื่อซ้ำ """
+        """ เพิ่มผู้ใช้งานเข้าสู่ห้องแชทจริงแบบเรียลไทม์ แกะสิทธิ์และป้องกันตัวเลขยอดรวมเพี้ยน """
         chan_key = channel.lower()
         if chan_key in self.rooms:
             room = self.rooms[chan_key]
+            
+            # ล้างค่าชื่อเล่นเพื่อสกัดหาความซ้ำซ้อน
             clean_new_nick = self.clean_nick(nick)
-            # ลบชื่อเก่าที่อาจจะชนกันออกก่อน
-            room["users"] = [u for u in room["users"] if self.clean_nick(u) != clean_new_nick]
+            
+            # ลบชื่อเก่าที่อาจจะมียศค้างอยู่หรือซ้ำกันในระบบออกให้หมดก่อนบวกค่าใหม่
+            room["users"] = [u for u in room["users"] if self.clean_nick(u).lower() != clean_new_nick.lower()]
+            
+            # บันทึกชื่อพร้อมยศจริงจากเซิร์ฟเวอร์ลงไป
             room["users"].append(nick)
+            
+            # สั่งให้จัดเรียงลำดับยศเรียลไทม์ และคำนวณจำนวนคนในวงเล็บปุ่มแท็บใหม่ทันที
             self.update_user_list_ui(channel, room["users"])
+
 
     def remove_user_from_list(self, channel, nick):
         """ ลบผู้ใช้งานออกจากห้องแชทจำลอง/จริงแบบเรียลไทม์ """
@@ -1024,6 +1058,7 @@ class PIRCHMainWindow(QMainWindow):
             self.current_channel = channel
             
         # เพิ่มเข้าสู่ผู้ใช้งานของระบบแชทแบบเรียลไทม์ทันที
+        #self.add_user_to_list(channel, nick)
         self.add_user_to_list(channel, nick)
 
     def on_user_left(self, channel, nick):
@@ -1140,12 +1175,29 @@ class PIRCHMainWindow(QMainWindow):
         room["chat_display"].append(msg_html)
 
     def on_user_list(self, channel, users):
-        """ ได้รับรายชื่อผู้ใช้ทั้งหมดในห้องแชทจากคำสั่ง NAMES """
+        """ แก้ไขบั๊กรายชื่อมาไม่ครบ: ปรับระบบให้บวกสะสมรายชื่อต่อกัน (Append) แทนการเขียนทับ """
         chan_key = channel.lower()
         if chan_key in self.rooms:
-            # ใช้รายชื่อที่ได้รับทับค่าเดิม
-            self.rooms[chan_key]["users"] = users
-            self.update_user_list_ui(channel, users)
+            # 1. ดึงรายชื่อที่มีการจัดเก็บอยู่แล้วในแท็บนี้ขึ้นมา หากไม่มีให้สร้าง List ว่าง
+            current_stored_users = self.rooms[chan_key].get("users", [])
+            
+            for u in users:
+                u_str = u.strip()
+                if u_str:
+                    # 2. ตรวจสอบและสกัดชื่อแบบคลีนเพื่อป้องกันชื่อซ้ำซ้อนในระบบ
+                    clean_name = self.clean_nick(u_str)
+                    
+                    # ลบชื่อเก่าที่ซ้ำกันออกก่อนเพื่อป้องกันรายชื่อบั๊กเบิ้ลสะสม
+                    current_stored_users = [user for user in current_stored_users if self.clean_nick(user).lower() != clean_name.lower()]
+                    
+                    # 3. ใส่รายชื่อใหม่ต่อท้ายสะสมเข้าไปเรื่อย ๆ จนกว่าเซิร์ฟเวอร์จะส่งครบ
+                    current_stored_users.append(u_str)
+                    
+            # 4. บันทึกก้อนข้อมูลรายชื่อสะสมกลับเข้าหน่วยความจำ และอัปเดตหน้าจอ UI
+            self.rooms[chan_key]["users"] = current_stored_users
+            self.update_user_list_ui(channel, current_stored_users)
+
+
 
     def update_user_list_ui(self, channel, users_list):
         """ จัดเรียงลำดับสิทธิ์ผู้ใช้ และอัปเดตตัวเลขจำนวนคนแบบเรียลไทม์ถูกต้องตามความต้องการของผู้ใช้ """
@@ -1436,9 +1488,14 @@ class PIRCHMainWindow(QMainWindow):
                 chat_display.append(msg_html)
 
         # หากมีการเชื่อมต่อจริง ให้ส่งลิงก์จำลอง (เช่นอัปโหลดไปยังบริการแชร์ไฟล์) เพื่อไม่ให้กระทบต่อ protocol IRC ปกติ
-        if self.irc_worker and self.irc_worker.is_connected:
+        #if self.irc_worker and self.irc_worker.is_connected
+        if self.irc_worker is not None:
             target = tab_text_clean
             self.irc_worker.send_line(f"PRIVMSG {target} :[ไฟล์สำเร็จ] 📎 {file_name} ({size_str})")
+            pass
+        else:
+            # กรณีที่ยังไม่ได้ต่อเซิร์ฟเวอร์ ให้แจ้งเตือนระบบ (ปรับให้ตรงกับชื่อฟังก์ชันเดิมของคุณ)
+            self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์ ไม่สามารถส่งไฟล์ได้")
             
         # มีเสียงตอบรับหรือแชทตอบกลับจากบอทหลังจาก 1 วินาที เพื่อให้ผู้ใช้รู้สึกฟินและเป็นธรรมชาติ
         def bot_reply():
@@ -1843,6 +1900,37 @@ class PIRCHMainWindow(QMainWindow):
         self.disconnect_irc()
         event.accept()
 
+    def on_user_double_clicked(self, item):
+        """ ระบบดับเบิ้ลคลิกที่ชื่อคนเพื่อเปิดแท็บกระซิบส่วนตัว (Query) สำหรับโค้ดจริงใน PDF """
+        raw_nick = item.text().strip()
+        if not raw_nick:
+            return
+            
+        # ล้างสัญลักษณ์ยศหน้าชื่อ (@, +) ออกเพื่อให้ได้ชื่อเล่นเพียวๆ
+        clean_target_nick = self.clean_nick(raw_nick)
+        
+        # ป้องกันไม่ให้ดับเบิ้ลคลิกคุยกับตัวเอง
+        my_current_nick = self.nick_input.text().strip()
+        if clean_target_nick.lower() == my_current_nick.lower():
+            return
+
+        target_key = clean_target_nick.lower()
+        
+        # ถ้ายังไม่เคยคุยส่วนตัวกับคนนี้ ให้สร้างแท็บใหม่ขึ้นมา
+        if target_key not in self.rooms:
+            # เรียกฟังก์ชันจริงในเครื่องของคุณเพื่อสร้างแท็บชื่อเล่นของเพื่อน
+            self.get_or_create_channel_tab(clean_target_nick)
+            
+            # ใส่ข้อความต้อนรับระบบในช่องแชทใหม่
+            current_time = datetime.now().strftime("%H:%M")
+            welcome_html = f"<div style='color: #64748b; font-size: 12px; padding: 5px 10px;'>[{current_time}] *** เริ่มต้นการสนทนาส่วนตัวกับ {clean_target_nick}</div>"
+            self.rooms[target_key]["chat_display"].append(welcome_html)
+            
+        # สั่งให้ระบบสลับหน้าจอ (Switch Tab) ไปยังแท็บคุยส่วนตัวคนนี้ทันที
+        for index in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(index).lower() == clean_target_nick.lower():
+                self.tab_widget.setCurrentIndex(index)
+                break
 
 # =====================================================================
 # 3. จุดเริ่มต้นรันโปรแกรม (Entry Point)
