@@ -429,38 +429,7 @@ export default function IRCClientSim({
     return name.replace(/^[@+%&~]+/, '');
   };
 
-  // Helper to generate a large and complete initial user list for a room
-  const getInitialUsersForRoom = (userNick: string): string[] => {
-    const defaultUsers = [
-      '@Python_Expert',
-      '@PyQt6_Fan',
-      '@IRCOp_Max',
-      '@SiamNet',
-      '+ClassicChatter',
-      '+Thaidog',
-      '+SiamBoy',
-      '+RetroCoder',
-      'MemeLord',
-      'RetroUser',
-      'Somchai',
-      'Somsri',
-      'Supa',
-      'Anong',
-      'Kitti',
-      'Wichai',
-      'Nipa',
-      'Noppadon',
-      'Malai',
-      'Udom',
-      'Chai',
-      'Prasert',
-      'Vichit',
-      'Panya'
-    ];
-    const cleanMe = cleanNick(userNick).toLowerCase();
-    const filteredDefaults = defaultUsers.filter(u => cleanNick(u).toLowerCase() !== cleanMe);
-    return [userNick, ...filteredDefaults];
-  };
+  // No more fake bots/mock users or getInitialUsersForRoom helper as requested by the user
 
   // Add a user to a specific room if they don't already exist (deduplicating using washed nick)
   const addUserToRoom = (roomName: string, userToAdd: string) => {
@@ -1149,8 +1118,8 @@ export default function IRCClientSim({
         [formattedChan]: {
           name: formattedChan,
           topic: `ห้องพูดคุยเกี่ยวกับ ${formattedChan} และการเขียนโปรแกรม PyQt6`,
-          // Standard initial users with operator @ and voice + prefixes
-          users: getInitialUsersForRoom(nick),
+          // Standard initial users - only you are initially in the list, no fake bots
+          users: [nick],
           messages: [
             {
               id: `join-${formattedChan}-${Date.now()}`,

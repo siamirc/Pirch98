@@ -26,6 +26,7 @@ class IRCWorker(QObject):
     user_left = pyqtSignal(str, str)             # (channel, nick)
     user_kicked = pyqtSignal(str, str, str, str) # (channel, kicked_nick, kicker_nick, reason)
     user_list_received = pyqtSignal(str, list)   # (channel, list of nicks)
+    mode_changed = pyqtSignal(str, str, str)     # (channel, sender_nick, mode_params)
     error_occurred = pyqtSignal(str)
 
     def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="PyQt6 pIRCH Client"):
@@ -182,6 +183,9 @@ class IRCWorker(QObject):
                 kicked_nick = parts[0]
                 reason = parts[1].lstrip(":") if len(parts) > 1 else "Kicked"
                 self.user_kicked.emit(channel, kicked_nick, sender_nick, reason)
+            elif command == "MODE":
+                clean_params = params.lstrip(":") if params else ""
+                self.mode_changed.emit(target, sender_nick, clean_params)
             elif command == "353": # รหัสแสดงรายชื่อผู้ใช้ในห้อง (RPL_NAMREPLY)
                 # รูปแบบทั่วไป: :server 353 nick = #channel :nick1 nick2 nick3... (หรืออาจเป็น @ หรือ *)
                 try:
@@ -654,6 +658,7 @@ class PIRCHMainWindow(QMainWindow):
         self.irc_worker.user_left.connect(self.on_user_left)
         self.irc_worker.user_kicked.connect(self.on_user_kicked)
         self.irc_worker.user_list_received.connect(self.on_user_list)
+        self.irc_worker.mode_changed.connect(self.on_mode_changed)
         self.irc_worker.registered.connect(self.on_irc_registered)
         self.irc_worker.error_occurred.connect(self.on_error)
         
@@ -1052,6 +1057,75 @@ class PIRCHMainWindow(QMainWindow):
                     self.current_channel = ""
             else:
                 self.remove_user_from_list(channel, kicked_nick)
+
+    def on_mode_changed(self, channel, sender_nick, mode_params):
+        """ ดักจับการเปลี่ยนแปลงสถานะผู้ใช้งาน (MODE) จากเซิร์ฟเวอร์จริงแบบเรียลไทม์ """
+        if not channel or not mode_params:
+            return
+            
+        chan_key = channel.lower()
+        if chan_key not in self.rooms:
+            return
+            
+        # แยกโหมดและเป้าหมาย เช่น "+o", "Somchai"
+        parts = mode_params.strip().split(" ")
+        if len(parts) < 2:
+            return
+            
+        mode_flag = parts[0]
+        target_nick = parts[1]
+        
+        # คลีนชื่อเล่นเพื่อหาตัวตนที่ถูกต้อง
+        clean_target = self.clean_nick(target_nick)
+        
+        room = self.rooms[chan_key]
+        current_users = room.get("users", [])
+        updated_users = []
+        user_found = False
+        
+        for u in current_users:
+            if self.clean_nick(u).lower() == clean_target.lower():
+                user_found = True
+                if mode_flag == "+o":
+                    updated_users.append(f"@{clean_target}")
+                elif mode_flag == "-o":
+                    updated_users.append(clean_target)
+                elif mode_flag == "+v":
+                    # ถ้ามี @ นำหน้าอยู่แล้ว (เป็น op) อาจจะไม่ต้องเปลี่ยน หรือเปลี่ยนตามเหมาะสม
+                    if u.startswith("@") or u.startswith("~") or u.startswith("&") or u.startswith("%"):
+                        updated_users.append(u)
+                    else:
+                        updated_users.append(f"+{clean_target}")
+                elif mode_flag == "-v":
+                    if u.startswith("+"):
+                        updated_users.append(clean_target)
+                    else:
+                        updated_users.append(u)
+                else:
+                    updated_users.append(u)
+            else:
+                updated_users.append(u)
+                
+        # หากไม่พบผู้ใช้ในรายการปัจจุบัน แต่ได้รับแจ้งโหมด ให้ทำการแอดเพิ่มเข้าไปพร้อมโหมด
+        if not user_found:
+            if mode_flag == "+o":
+                updated_users.append(f"@{clean_target}")
+            elif mode_flag == "+v":
+                updated_users.append(f"+{clean_target}")
+            else:
+                updated_users.append(clean_target)
+                
+        # อัปเดตข้อมูลห้องและวาด UI ใหม่
+        room["users"] = updated_users
+        self.update_user_list_ui(channel, updated_users)
+        
+        # แสดงข้อความแจ้งเตือนระบบในแชทให้ผู้ใช้เห็นความเคลื่อนไหวเรียลไทม์
+        current_time = datetime.now().strftime("%H:%M")
+        time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
+        text_color = "#2563eb" if self.current_theme == "light" else "#60a5fa"
+        
+        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color}; font-weight: bold;'>⚙ * {sender_nick} ตั้งโหมด {mode_flag} ให้กับ {clean_target} ในห้อง {channel}</span></div>"
+        room["chat_display"].append(msg_html)
 
     def on_user_list(self, channel, users):
         """ ได้รับรายชื่อผู้ใช้ทั้งหมดในห้องแชทจากคำสั่ง NAMES """
