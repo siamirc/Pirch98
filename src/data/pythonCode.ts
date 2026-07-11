@@ -1313,6 +1313,14 @@ class PIRCHMainWindow(QMainWindow):
                 self.append_system_msg("  /nick ชื่อใหม่ - เปลี่ยนชื่อเล่นของคุณ")
                 self.append_system_msg("  /quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์")
                 self.append_system_msg("  /help - เปิดคู่มือคำสั่งช่วยเหลือนี้")
+                self.append_system_msg("  /whois ชื่อเล่น - ตรวจสอบข้อมูลผู้ใช้งาน")
+                self.append_system_msg("^B[คำสั่ง Anope Services (anope.org)]^B")
+                self.append_system_msg("  /ns หรือ /nickserv คำสั่ง - เรียกใช้บริการ NickServ")
+                self.append_system_msg("  /cs หรือ /chanserv คำสั่ง - เรียกใช้บริการ ChanServ")
+                self.append_system_msg("  /os หรือ /operserv คำสั่ง - เรียกใช้บริการ OperServ")
+                self.append_system_msg("  /ms หรือ /memoserv คำสั่ง - เรียกใช้บริการ MemoServ")
+                self.append_system_msg("  /hs หรือ /hostserv คำสั่ง - เรียกใช้บริการ HostServ")
+                self.append_system_msg("  /bs หรือ /botserv คำสั่ง - เรียกใช้บริการ BotServ")
                 self.append_system_msg("^B[คำสั่งผู้ดูแลห้อง (Operator Commands)]^B")
                 self.append_system_msg("  /kick ชื่อเล่น [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท")
                 self.append_system_msg("  /ban ชื่อเล่น - ตั้งแบนผู้ใช้งาน")
@@ -1322,6 +1330,19 @@ class PIRCHMainWindow(QMainWindow):
                 self.append_system_msg("  /voice ชื่อเล่น - มอบสิทธิ์การพูดพิเศษ (+)")
                 self.append_system_msg("  /devoice ชื่อเล่น - ยกเลิกสิทธิ์การพูดพิเศษ")
                 self.append_system_msg("  /topic หัวข้อใหม่ - เปลี่ยนหัวข้อห้องแชท")
+                self.append_system_msg("^B[คำสั่งผู้ดูแลระบบ (IRC Operator / NetAdmin Commands)]^B")
+                self.append_system_msg("  /oper ชื่อผู้ใช้ รหัสผ่าน - เข้าสู่สถานะ IRC Operator")
+                self.append_system_msg("  /kill ชื่อเล่น [เหตุผล] - เตะผู้ใช้หลุดออกจากเซิร์ฟเวอร์")
+                self.append_system_msg("  /kline โฮสต์ [เหตุผล] - แบนโฮสต์/ไอพีจากเซิร์ฟเวอร์นี้")
+                self.append_system_msg("  /gline โฮสต์ [เหตุผล] - แบนโฮสต์แบบเครือข่ายวงกว้าง (NetAdmin)")
+                self.append_system_msg("  /zline ไอพี [เหตุผล] - แบนไอพีในระดับต่ำสุด (NetAdmin)")
+                self.append_system_msg("  /shun ชื่อเล่น [เหตุผล] - ปิดกั้นไม่ให้พูดหรือส่งข้อความ")
+                self.append_system_msg("  /rehash - โหลดค่าคอนฟิกเซิร์ฟเวอร์ใหม่")
+                self.append_system_msg("  /restart - รีสตาร์ทระบบเซิร์ฟเวอร์ใหม่")
+                self.append_system_msg("  /sajoin ชื่อเล่น #ห้องแชท - บังคับเข้าห้องแชท (NetAdmin)")
+                self.append_system_msg("  /sapart ชื่อเล่น #ห้องแชท - บังคับออกห้องแชท (NetAdmin)")
+                self.append_system_msg("  /sanick ชื่อเล่น ชื่อใหม่ - บังคับเปลี่ยนชื่อผู้ใช้ (NetAdmin)")
+                self.append_system_msg("  /samode เป้าหมาย โหมด - บังคับตั้งโหมด (NetAdmin)")
                 self.append_system_msg("^B[การจัดรูปแบบข้อความ mIRC]^B")
                 self.append_system_msg("  ^B^Bตัวหนา^B^B - พิมพ์ ^Bข้อความ^B หรือ &Bข้อความ&B")
                 self.append_system_msg("  ^U^Uขีดเส้นใต้^U^U - พิมพ์ ^Uข้อความ^U หรือ &Uข้อความ&U")
@@ -1359,19 +1380,103 @@ class PIRCHMainWindow(QMainWindow):
             elif cmd == "TOPIC":
                 if args and self.current_channel and self.irc_worker:
                     self.irc_worker.send_line(f"TOPIC {self.current_channel} :{args}")
-            else:
-                # ส่ง Log คำสั่งไม่ถูกต้องไปยังหน้าจอแชทปัจจุบัน
-                current_idx = self.tab_widget.currentIndex()
-                current_text = self.tab_widget.tabText(current_idx)
-                current_text_clean = current_text.split(" (")[0]
-                
-                err_msg = f"<span style='color: #f87171;'>* คำสั่ง /{cmd} ไม่รองรับในไคลเอนต์เบื้องต้นนี้</span>"
-                if current_text_clean.lower() in self.rooms:
-                    self.rooms[current_text_clean.lower()]["chat_display"].append(err_msg)
-                elif current_text == "MOTD":
-                    self.motd_display.append(err_msg)
+            elif cmd in ["NS", "NICKSERV"]:
+                if self.irc_worker:
+                    self.irc_worker.send_line(f"PRIVMSG NickServ :{args}")
+                    self.append_system_msg(f"-> NickServ: {args}")
                 else:
-                    self.status_display.append(err_msg)
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ NickServ ได้")
+            elif cmd in ["CS", "CHANSERV"]:
+                if self.irc_worker:
+                    self.irc_worker.send_line(f"PRIVMSG ChanServ :{args}")
+                    self.append_system_msg(f"-> ChanServ: {args}")
+                else:
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ ChanServ ได้")
+            elif cmd in ["OS", "OPERSERV"]:
+                if self.irc_worker:
+                    self.irc_worker.send_line(f"PRIVMSG OperServ :{args}")
+                    self.append_system_msg(f"-> OperServ: {args}")
+                else:
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ OperServ ได้")
+            elif cmd in ["MS", "MEMOSERV"]:
+                if self.irc_worker:
+                    self.irc_worker.send_line(f"PRIVMSG MemoServ :{args}")
+                    self.append_system_msg(f"-> MemoServ: {args}")
+                else:
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ MemoServ ได้")
+            elif cmd in ["HS", "HOSTSERV"]:
+                if self.irc_worker:
+                    self.irc_worker.send_line(f"PRIVMSG HostServ :{args}")
+                    self.append_system_msg(f"-> HostServ: {args}")
+                else:
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ HostServ ได้")
+            elif cmd in ["BS", "BOTSERV"]:
+                if self.irc_worker:
+                    self.irc_worker.send_line(f"PRIVMSG BotServ :{args}")
+                    self.append_system_msg(f"-> BotServ: {args}")
+                else:
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถเรียกใช้บริการ BotServ ได้")
+            elif cmd == "WHOIS":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"WHOIS {args}")
+                elif not args:
+                    self.append_system_msg("ระบบ: กรุณาระบุชื่อผู้ใช้งาน เช่น /whois Somchai")
+            elif cmd == "OPER":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"OPER {args}")
+                elif not args:
+                    self.append_system_msg("ระบบ: กรุณาระบุชื่อผู้ใช้และรหัสผ่าน เช่น /oper admin password")
+            elif cmd == "KILL":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"KILL {args}")
+            elif cmd == "KLINE":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"KLINE {args}")
+            elif cmd == "GLINE":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"GLINE {args}")
+            elif cmd == "ZLINE":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"ZLINE {args}")
+            elif cmd == "SHUN":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"SHUN {args}")
+            elif cmd == "REHASH":
+                if self.irc_worker:
+                    self.irc_worker.send_line("REHASH")
+            elif cmd == "RESTART":
+                if self.irc_worker:
+                    self.irc_worker.send_line("RESTART")
+            elif cmd == "SAMODE":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"SAMODE {args}")
+            elif cmd == "SAJOIN":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"SAJOIN {args}")
+            elif cmd == "SAPART":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"SAPART {args}")
+            elif cmd == "SANICK":
+                if args and self.irc_worker:
+                    self.irc_worker.send_line(f"SANICK {args}")
+            else:
+                # ส่งคำสั่งดิบไปยังเซิร์ฟเวอร์โดยตรงสำหรับคำสั่งอื่นๆ (Raw Fallback)
+                if self.irc_worker:
+                    raw_cmd = f"{cmd} {args}".strip()
+                    self.irc_worker.send_line(raw_cmd)
+                    self.append_system_msg(f"ระบบ: ส่งคำสั่งตรงไปยังเซิร์ฟเวอร์ -> /{cmd} {args}")
+                else:
+                    current_idx = self.tab_widget.currentIndex()
+                    current_text = self.tab_widget.tabText(current_idx)
+                    current_text_clean = current_text.split(" (")[0]
+                    
+                    err_msg = f"<span style='color: #f87171;'>* คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถส่งคำสั่ง /{cmd} ได้</span>"
+                    if current_text_clean.lower() in self.rooms:
+                        self.rooms[current_text_clean.lower()]["chat_display"].append(err_msg)
+                    elif current_text == "MOTD":
+                        self.motd_display.append(err_msg)
+                    else:
+                        self.status_display.append(err_msg)
         else:
             # ตรวจจับห้องปัจจุบันจาก แถบแท็บเพื่อส่ง PRIVMSG ไปยังปลายทางที่เลือกอยู่โดยไม่ปนกัน
             current_idx = self.tab_widget.currentIndex()

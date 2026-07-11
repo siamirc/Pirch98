@@ -1580,6 +1580,14 @@ export default function IRCClientSim({
         addMessageToRoom(currentRoom, 'SYSTEM', '/quit - ตัดการเชื่อมต่อจากเซิร์ฟเวอร์', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/help - เปิดคู่มือคำสั่งช่วยเหลือนี้', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/me ข้อความการกระทำ - ส่งข้อความสถานะการกระทำ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/whois ชื่อผู้ใช้ - ตรวจสอบข้อมูลสิทธิ์ผู้ใช้งาน', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '=== บริการพิเศษ Anope Services ===', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/ns หรือ /nickserv คำสั่ง - เรียกใช้ระบบ NickServ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/cs หรือ /chanserv คำสั่ง - เรียกใช้ระบบ ChanServ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/os หรือ /operserv คำสั่ง - เรียกใช้ระบบ OperServ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/ms หรือ /memoserv คำสั่ง - เรียกใช้ระบบ MemoServ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/hs หรือ /hostserv คำสั่ง - เรียกใช้ระบบ HostServ', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/bs หรือ /botserv คำสั่ง - เรียกใช้ระบบ BotServ', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '=== คำสั่งสำหรับผู้ดูแลห้องแชท (Operator Commands) ===', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/kick ชื่อผู้ใช้ [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/ban ชื่อผู้ใช้ - แบนผู้ใช้งานและเตะออก (ป้องกันไม่ให้กลับมาเข้าห้องอีก)', 'info');
@@ -1589,11 +1597,157 @@ export default function IRCClientSim({
         addMessageToRoom(currentRoom, 'SYSTEM', '/voice ชื่อผู้ใช้ - มอบสิทธิ์การพูดคุย/พิมพ์ข้อความพิเศษ (+)', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/devoice ชื่อผู้ใช้ - ยกเลิกสิทธิ์การพูดคุยพิเศษ (+)', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '/topic ข้อความหัวข้อใหม่ - เปลี่ยนแปลงหัวข้อห้องแชทปัจจุบัน', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '=== คำสั่งผู้ดูแลระบบสูงสุด (IRC Operator / NetAdmin Commands) ===', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/oper ชื่อผู้ใช้ รหัสผ่าน - เข้าสู่สถานะ IRC Operator', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/kill ชื่อเล่น [เหตุผล] - บังคับเตะผู้ใช้ออกจากเครือข่ายเซิร์ฟเวอร์', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/kline โฮสต์ [เหตุผล] - แบนโฮสต์/ไอพีจากเซิร์ฟเวอร์นี้', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/gline โฮสต์ [เหตุผล] - แบนผู้ใช้ออกข้ามเครือข่ายระดับสากล (NetAdmin)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/zline ไอพี [เหตุผล] - แบนระดับระดับ Socket IP (NetAdmin)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/shun ชื่อเล่น [เหตุผล] - จำกัดการส่งข้อความของผู้ใช้ (Shun)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/rehash - สั่งโหลดไฟล์คอนฟิกเซิร์ฟเวอร์ใหม่', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/restart - รีสตาร์ทการเชื่อมต่อเซิร์ฟเวอร์แกนหลัก', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/sajoin ชื่อผู้ใช้ #ห้องแชท - บังคับผู้ใช้เข้าห้อง (NetAdmin)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/sapart ชื่อผู้ใช้ #ห้องแชท - บังคับผู้ใช้ออกห้อง (NetAdmin)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/sanick ชื่อผู้ใช้ ชื่อใหม่ - บังคับเปลี่ยนชื่อเล่น (NetAdmin)', 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', '/samode เป้าหมาย โหมด - บังคับตั้งค่าโหมดพิเศษ (NetAdmin)', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '=== วิธีจัดรูปแบบอักษรและข้อความสีแบบ mIRC ===', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '^Bตัวหนา^B (หรือใช้ &B) | ^Uขีดเส้นใต้^U (หรือใช้ &U)', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '^Cตัวเลขสีอักษร - เช่น ^C4สีแดง ^C12สีฟ้า ^C3สีเขียว ^C9เขียวอ่อน', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '^Cสีอักษร,สีพื้นหลัง - เช่น ^C0,1อักษรขาวพื้นหลังดำ (รหัสสี 0-15)', 'info');
         addMessageToRoom(currentRoom, 'SYSTEM', '^O (หรือใช้ &O) - เพื่อรีเซ็ตค่ารูปแบบกลับเป็นตัวอักษรธรรมดา', 'info');
+      } else if (command === 'WHOIS') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการตรวจสอบข้อมูล เช่น /whois Somchai', 'error');
+          return;
+        }
+        const target = args.trim();
+        addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] ค้นหาข้อมูลสิทธิ์ผู้ใช้งานของ: ${target}`, 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] User: ${target} (~user@thaiirc-sim.net) * Real Name: ThaiIRC Simulated User`, 'info');
+        addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] Server: thaiirc.anope.org (ThaiIRC Network Server)`, 'info');
+        if (['nickserv', 'chanserv', 'operserv', 'memoserv', 'hostserv', 'botserv'].includes(target.toLowerCase())) {
+          addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] Special: ผู้ใช้รายนี้คือ Bot บริการของระบบ Anope.org`, 'info');
+        } else if (target.toLowerCase() === 'admin' || target.toLowerCase() === 'system') {
+          addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] Rank: ผู้ดูแลระบบเครือข่ายระดับสูงสุด (NetAdmin)`, 'info');
+        } else {
+          addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] Rank: ผู้ใช้งานทั่วไป (Registered Nickname)`, 'info');
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `[WHOIS] End of WHOIS info.`, 'info');
+      } else if (['NS', 'NICKSERV'].includes(command)) {
+        addMessageToRoom(currentRoom, 'SYSTEM', `-> NickServ: ${args}`, 'info');
+        const queryRoom = getOrCreatePMTab('NickServ', true);
+        addMessageToRoom(queryRoom, nick, args || 'HELP', 'user');
+        setTimeout(() => {
+          addMessageToRoom(queryRoom, 'NickServ', `[NickServ] ได้รับคำสั่ง "${args || 'HELP'}" เรียบร้อยแล้ว (จำลองการทำงาน Anope.org NickServ)`, 'system');
+        }, 600);
+      } else if (['CS', 'CHANSERV'].includes(command)) {
+        addMessageToRoom(currentRoom, 'SYSTEM', `-> ChanServ: ${args}`, 'info');
+        const queryRoom = getOrCreatePMTab('ChanServ', true);
+        addMessageToRoom(queryRoom, nick, args || 'HELP', 'user');
+        setTimeout(() => {
+          addMessageToRoom(queryRoom, 'ChanServ', `[ChanServ] ได้รับคำสั่ง "${args || 'HELP'}" สำหรับห้องแชทปัจจุบันของคุณเรียบร้อยแล้ว`, 'system');
+        }, 600);
+      } else if (['OS', 'OPERSERV'].includes(command)) {
+        addMessageToRoom(currentRoom, 'SYSTEM', `-> OperServ: ${args}`, 'info');
+        const queryRoom = getOrCreatePMTab('OperServ', true);
+        addMessageToRoom(queryRoom, nick, args || 'HELP', 'user');
+        setTimeout(() => {
+          addMessageToRoom(queryRoom, 'OperServ', `[OperServ] สิทธิ์ NetAdmin ได้ส่งคำสั่ง "${args || 'HELP'}" ถึงระบบควบคุมเซิร์ฟเวอร์แล้ว`, 'system');
+        }, 600);
+      } else if (['MS', 'MEMOSERV'].includes(command)) {
+        addMessageToRoom(currentRoom, 'SYSTEM', `-> MemoServ: ${args}`, 'info');
+        const queryRoom = getOrCreatePMTab('MemoServ', true);
+        addMessageToRoom(queryRoom, nick, args || 'HELP', 'user');
+        setTimeout(() => {
+          addMessageToRoom(queryRoom, 'MemoServ', `[MemoServ] สั่งการแผ่นบันทึกความจำสเปซส่วนกลางสำเร็จ: "${args || 'HELP'}"`, 'system');
+        }, 600);
+      } else if (['HS', 'HOSTSERV'].includes(command)) {
+        addMessageToRoom(currentRoom, 'SYSTEM', `-> HostServ: ${args}`, 'info');
+        const queryRoom = getOrCreatePMTab('HostServ', true);
+        addMessageToRoom(queryRoom, nick, args || 'HELP', 'user');
+        setTimeout(() => {
+          addMessageToRoom(queryRoom, 'HostServ', `[HostServ] ตั้งค่าคำขอปรับแต่ง Virtual Host (vHost) สำเร็จเรียบร้อย`, 'system');
+        }, 600);
+      } else if (['BS', 'BOTSERV'].includes(command)) {
+        addMessageToRoom(currentRoom, 'SYSTEM', `-> BotServ: ${args}`, 'info');
+        const queryRoom = getOrCreatePMTab('BotServ', true);
+        addMessageToRoom(queryRoom, nick, args || 'HELP', 'user');
+        setTimeout(() => {
+          addMessageToRoom(queryRoom, 'BotServ', `[BotServ] บริการบอทผู้ช่วยประจำเครื่องดำเนินการเสร็จสิ้น สำหรับคำขอ "${args || 'HELP'}"`, 'system');
+        }, 600);
+      } else if (command === 'OPER') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อผู้ใช้และรหัสผ่าน เช่น /oper admin password', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** ${nick} กำลังเข้าสู่สถานะสิทธิ์ Operator...`, 'system');
+        setTimeout(() => {
+          addMessageToRoom(currentRoom, 'SYSTEM', `*** ยินดีต้อนรับ ${nick}, ปัจจุบันคุณเป็น IRC Operator เครือข่าย (ยศ NetAdmin/OPer สูงสุด) เรียบร้อยแล้ว!`, 'system');
+        }, 600);
+      } else if (command === 'KILL') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุชื่อเล่นที่ต้องการบังคับตัดการเชื่อมต่อ เช่น /kill Spammer_001', 'error');
+          return;
+        }
+        const target = args.split(' ')[0];
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** บังคับ KILL: ตัดผู้ใช้งาน ${target} หลุดจากระบบเครือข่ายเซิร์ฟเวอร์เสร็จสิ้น`, 'system');
+      } else if (command === 'KLINE') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุโฮสต์/ไอพี สำหรับ KLINE', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** แบน K-Line: ห้ามโฮสต์แอดเดรส ${args} ล็อกอินเข้าสู่เซิร์ฟเวอร์ถาวร`, 'system');
+      } else if (command === 'GLINE') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุไอพี/มาสก์ สำหรับ GLINE', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** แบน G-Line (ยศ NetAdmin): สั่งแบนข้ามเซิร์ฟเวอร์พันธมิตรเครือข่ายทั้งหมด สำหรับโฮสต์ ${args} สำเร็จ`, 'system');
+      } else if (command === 'ZLINE') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุไอพีแอดเดรส สำหรับ ZLINE', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** แบน Z-Line (ยศ NetAdmin): ทำการบล็อกการเชื่อมต่อระดับ Socket IP ${args} เรียบร้อย`, 'system');
+      } else if (command === 'SHUN') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุผู้เล่นที่ต้องการ Shun', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** จำกัดการพิมพ์ Shun: ผู้ใช้ ${args} ไม่สามารถส่งข้อมูลหรือกระซิบคุยส่วนตัวในระบบชั่วคราว`, 'system');
+      } else if (command === 'REHASH') {
+        addMessageToRoom(currentRoom, 'SYSTEM', '*** REHASHing: กำลังอัปโหลดคอนฟิกของระบบและข้อมูลไฟล์เซอร์วิสใหม่หมด...', 'system');
+        setTimeout(() => {
+          addMessageToRoom(currentRoom, 'SYSTEM', '*** โหลดข้อมูล REHASH ประสบความสำเร็จ!', 'system');
+        }, 800);
+      } else if (command === 'RESTART') {
+        addMessageToRoom(currentRoom, 'SYSTEM', '*** RESTART: สั่งรีสตาร์ทบริการจำลองเซิร์ฟเวอร์โดยสมบูรณ์...', 'system');
+        setTimeout(() => {
+          addMessageToRoom(currentRoom, 'SYSTEM', '*** รีสตาร์ทบริการเซิร์ฟเวอร์เรียบร้อย!', 'system');
+        }, 1200);
+      } else if (command === 'SAJOIN') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุ เช่น /sajoin Somchai #General', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** SAJOIN (NetAdmin Force Join): กำลังดึงตัวด่วน ${args} เข้าร่วมห้องแชท`, 'system');
+      } else if (command === 'SAPART') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุ เช่น /sapart Somchai #General', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** SAPART (NetAdmin Force Part): บังคับผู้ใช้ ${args} ออกจากห้องแชทที่กำหนดสำเร็จ`, 'system');
+      } else if (command === 'SANICK') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุ เช่น /sanick Somchai Somchai_New', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** SANICK (NetAdmin Force Nick): บังคับผู้ใช้เปลี่ยนชื่อเป็น: ${args}`, 'system');
+      } else if (command === 'SAMODE') {
+        if (!args) {
+          addMessageToRoom(currentRoom, 'SYSTEM', 'กรุณาระบุ เช่น /samode #Siam +o Somchai', 'error');
+          return;
+        }
+        addMessageToRoom(currentRoom, 'SYSTEM', `*** SAMODE (NetAdmin Force Mode): บังคับเปลี่ยนโหมดเป้าหมายเป็น: ${args}`, 'system');
       } else if (command === 'ME') {
         if (currentRoom === 'Status') {
           addMessageToRoom(currentRoom, 'SYSTEM', 'คำสั่งนี้ต้องใช้ในห้องแชทเท่านั้น', 'error');
