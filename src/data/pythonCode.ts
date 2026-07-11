@@ -11,6 +11,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer
 from PyQt6.QtGui import QFont, QColor, QPainter, QBrush
+import sys
+import socket
+from datetime import datetime
+# 🌟 เพิ่มบรรทัดนี้เข้าไปด้านบนสุดของไฟล์ครับ
+import winsound 
 
 # =====================================================================
 # 1. คลาส IRCWorker สำหรับจัดการเชื่อมต่อและรับส่งข้อมูลผ่าน TCP Socket
@@ -250,6 +255,7 @@ class IRCWorker(QObject):
         except Exception as e:
             print(f"Cleanup Signal Error: {e}")
             pass
+        
 
 
 # =====================================================================
@@ -387,7 +393,7 @@ class EmojiPicker(QDialog):
             "🐱": ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🪱", "🐛", "🦋", "🐌", "🐞", "🐜", "🪰", "🪲", "🪳", "🕷", "🕸", "🦂", "🐢", "🐍", "🦎", "🐙", "🦑", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🦧", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🦬", "🐃", "🐂", "🐄", "🐎", "🐖", "🐏", "🐑", "🦙", "🐐", "🦌", "🐕", "🐈", "🐓", "🦃", "🦚", "🦜", "🦢", "🦩", "🕊", "🐇", "🦝", "🦡", "🦫", "🦦", "🦥", "🐿", "🦔", "🐾", "🐉", "🐲", "🌵", "🎄", "🌲", "🌳", "🌴", "🌱", "🌿", "☘️", "🍀", "🍁", "🍂", "🍃"],
             "🍔": ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶", "🫑", "🌽", "🥕", "🫒", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🥪", "🥙", "🌮", "🌯", "🫓", "🥚", "🍳", "🥘", "🍲", "🫕", "🥣", "🥗", "🍿", "🧈", "🧂", "🥫", "🍱", "🍘", "🍙", "🍚", "🍛", "🍜", "🍝", "🍣", "🍤", "🍥", "🥮", "🍡", "🥟", "🥠", "🥡", "🍦", "🍧", "🍨", "🍩", "🍪", "🎂", "🍰", "🧁", "🥧", "🍫", "🍬", "🍭", "🍮", "🍯", "🍼", "🥛", "☕️", "🫖", "🍵", "🍶", "🍾", "🍷", "🍸", "🍹", "🍺", "🍻", "🥂", "🥃", "🥤", "🧋", "🧃", "🧉", "🧊"],
             "⚽": ["⚽️", "🏀", "🏈", "⚾️", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🪃", "🥅", "⛳️", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛹", "🛼", "🛷", "⛸", "🥌", "🎿", "⛷", "🏂", "🏋️‍♀️", "🏋️", "🤼‍♀️", "🤼", "🤸‍♀️", "🤸", "⛹️‍♀️", "⛹️", "🤺", "🤾‍♀️", "🤾", "🏌️‍♀️", "🏌️", "🏇", "🧘‍♀️", "🧘", "🏄‍♀️", "🏄", "🏊‍♀️", "🏊", "🤽‍♀️", "🤽", "🚣‍♀️", "🚣", "🧗‍♀️", "🧗", "🚴‍♀️", "🚴", "🚵‍♀️", "🚵", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖", "🎟", "🎫", "🎪", "🎭", "🎨", "🎬", "🎤", "🎧", "🎼", "🎹", "🥁", "🪘", "🎷", "🎺", "🎸", "🪕", "🎻", "🎲", "♟", "🎯", "🎳", "🎮", "🎰", "🧩"],
-            "🚗": ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎", "🚓", "橫", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🏍", "🛵", "🚲", "🛴", "🛹", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛸", "🚁", "⛵️", "🛶", "🚤", "🛳", "⛴", "🚢", "⚓️", "🛟", "🚀", "🛸", "🗺", "🧭", "🏔", "⛰", "🌋", "🗻", "🏕", "🏖", "🏜", "🏝", "🏞", "🏟", "🏛", "🏗", "🧱", "🏘", "🏚", "🏠", "🏡", "🏢", "🏣", "🏤", "🏦", "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪️", "🕌", "🛕", "🕋", "⛩", "⛲️", "⛺️", "🌁", "🌃", "🏙", "🌄", "🌅", "🌆", "🌇", "🌉", "🎠", "🎡", "🎢"],
+            "🚗": ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🏍", "🛵", "🚲", "🛴", "🛹", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛸", "🚁", "⛵️", "🛶", "🚤", "🛳", "⛴", "🚢", "⚓️", "🛟", "🚀", "🛸", "🗺", "🧭", "🏔", "⛰", "🌋", "🗻", "🏕", "🏖", "🏜", "🏝", "🏞", "🏟", "🏛", "🏗", "🧱", "🏘", "🏚", "🏠", "🏡", "🏢", "🏣", "🏤", "漸", "🏦", "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪️", "🕌", "🛕", "🕋", "⛩", "⛲️", "⛺️", "🌁", "🌃", "🏙", "🌄", "🌅", "🌆", "🌇", "🌉", "🎠", "🎡", "🎢"],
             "💡": ["⌚️", "📱", "📲", "💻", "⌨️", "🖥", "🖨", "🖱", "🖲", "🕹", "🗜", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽", "🎞", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙", "🎚", "🎛", "🧭", "⏱", "⏲", "⏰", "🕰", "⌛️", "⏳", "📡", "🔋", "🔌", "💡", "🔦", "🕯", "🪔", "🧯", "🛢", "💸", "💵", "💴", "💶", "💷", "🪙", "💰", "💳", "💎", "⚖️", "🪜", "🧰", "🪛", "🔧", "🔨", "⚒", "🛠", "⛏", "🪓", "⚙️", "🧱", "🪨", "🪵", "⛓", "🪝", "🔫", "💣", "🔪", "🗡", "⚔️", "🛡", "🚬", "⚰️", "🪦", "⚱️", "🔮", "🧿", "📿", "💈", "🧪", "🧫", "🧬", "🔬", "🔭", "📡", "🎈", "🎉", "🎊", "🧧", "🎀", "🎁", "🪄", "🪅", "🎎", "🎏", "🎐", "✉️", "📩", "📨", "📧", "💌", "📥", "📤", "📦", "🏷", "📪", "📫", "📬", "📭", "📮", "🗳", "✏️", "✒️", "🖋", "🖊", "🖌", "🖍", "📝", "📁", "📂", "🗂", "📅", "📆", "🗒", "🗓", "📇", "📈", "📉", "📊", "📋", "📌", "📍", "📎", "🖇", "📐", "📏", "✂️", "🗃", "🗄", "🗑", "🔒", "🔓", "🔏", "🔐", "🔑", "🗝", "🔨", "🪓", "🩹", "🩺", "🩸", "🩻", "🛌", "🛋", "🪑", "🚽", "🪠", "🚿", "🛁", "🧼", "🪥", "🪮", "🧽", "🧴", "🛎", "🚪", "🪞", "🪟", "🧺", "🧹", "🧸", "🪆", "🧷", "🧦", "👗", "👘", "👚", "👛", "👜", "👝", "🎒", "👞", "👟", "🥾", "🥿", "👠", "👡", "👢", "👑", "👒", "🎩", "🎓", "🧢", "⛑", "💄", "💍", "💎"]
         }
 
@@ -424,10 +430,18 @@ class EmojiPicker(QDialog):
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
 # =====================================================================
 class PIRCHMainWindow(QMainWindow):
+    # สัญญาณสำหรับอัปเดตสถานะและจัดการส่งไฟล์จาก Thread อัปโหลดเบื้องหลังอย่างปลอดภัย
+    upload_status_signal = pyqtSignal(str)
+    upload_success_signal = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("pyIRCH98 - Classic IRC Client")
         self.resize(800, 600)
+        
+        # เชื่อมต่อสัญญาณควบคุมระบบอัปโหลดไฟล์เสร็จสิ้นแบบ Thread-safe
+        self.upload_status_signal.connect(self.append_system_msg)
+        self.upload_success_signal.connect(self.handle_upload_success)
         
         # ตัวแปรสำหรับ Thread และ Connection
         self.irc_thread = None
@@ -435,6 +449,7 @@ class PIRCHMainWindow(QMainWindow):
         self.current_channel = ""
         self.rooms = {}
         self.current_theme = "light"
+        self.conn_state = "offline"
         self.font_size_idx = 1 # 0: เล็ก, 1: กลาง, 2: ใหญ่
         self.mention_notify_enabled = True
         
@@ -689,8 +704,42 @@ class PIRCHMainWindow(QMainWindow):
         # แถบสถานะด้านล่างสุด (Status Bar)
         # ----------------------------------------------------
         self.status_bar = QStatusBar()
+        self.status_bar.setObjectName("MyStatusBar")
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("พร้อมใช้งาน (Status: Offline)")
+
+        self.status_lbl = QLabel("Status: OFFLINE")
+        self.status_lbl.setObjectName("StatusLbl")
+        self.status_lbl.setMargin(0)
+
+        self.server_lbl = QLabel("Server: -")
+        self.server_lbl.setObjectName("ServerLbl")
+        self.server_lbl.setMargin(0)
+
+        self.room_lbl = QLabel("Room: -")
+        self.room_lbl.setObjectName("RoomLbl")
+        self.room_lbl.setMargin(0)
+
+        self.nick_lbl = QLabel("Nick: -")
+        self.nick_lbl.setObjectName("NickLbl")
+        self.nick_lbl.setMargin(0)
+
+        self.time_lbl = QLabel("Local Time: --:--:--")
+        self.time_lbl.setObjectName("TimeLbl")
+        self.time_lbl.setMargin(0)
+
+        self.status_bar.addWidget(self.status_lbl)
+        self.status_bar.addWidget(self.server_lbl)
+        self.status_bar.addWidget(self.room_lbl)
+        self.status_bar.addWidget(self.nick_lbl)
+        self.status_bar.addPermanentWidget(self.time_lbl)
+
+        # ตั้งค่าสัญญาณอัปเดตเมื่อเลือกแท็บเปลี่ยน
+        self.tab_widget.currentChanged.connect(self.update_status_bar_ui)
+
+        # ตัวแปรสถานะและการอัปเดตเรียลไทม์
+        self.statusbar_timer = QTimer(self)
+        self.statusbar_timer.timeout.connect(self.update_status_bar_ui)
+        self.statusbar_timer.start(1000)
 
     def get_or_create_channel_tab(self, channel):
         """ ค้นหาหรือสร้างแถบห้องแชทใหม่แยกต่างหากสำหรับ channel """
@@ -713,12 +762,16 @@ class PIRCHMainWindow(QMainWindow):
         
         user_list = QListWidget()
         user_list.setObjectName("UserList")
+        user_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        user_list.customContextMenuRequested.connect(lambda pos, ul=user_list: self.show_user_list_context_menu(pos, ul))
         splitter.addWidget(user_list)
         
         splitter.setSizes([640, 160])
         splitter.setStretchFactor(0, 80)
         splitter.setStretchFactor(1, 20)
         chan_layout.addWidget(splitter)
+        
+        user_list.itemDoubleClicked.connect(self.on_user_double_clicked)
         
         self.tab_widget.addTab(chan_widget, channel)
         
@@ -866,12 +919,14 @@ class PIRCHMainWindow(QMainWindow):
         
         self.connect_btn.setText("Connecting...")
         self.connect_btn.setEnabled(False)
-        self.status_bar.showMessage("กำลังกำลังพยายามเชื่อมต่อ...")
+        self.conn_state = "connecting"
+        self.update_status_bar_ui()
 
     def disconnect_irc(self):
         """ ตัดการเชื่อมต่ออย่างเป็นระบบและปลอดภัย """
         if self.irc_worker:
-            self.status_bar.showMessage("กำลังตัดการเชื่อมต่อ...")
+            self.conn_state = "disconnecting"
+            self.update_status_bar_ui()
             # ส่งคำสั่ง QUIT ไปแจ้งเซิร์ฟเวอร์ก่อนปิด Socket
             try:
                 self.irc_worker.send_line("QUIT :Leaving with pyIRCH98")
@@ -890,14 +945,16 @@ class PIRCHMainWindow(QMainWindow):
         """ ทำงานหลังจาก Socket ต่อติดเสร็จสิ้น """
         self.connect_btn.setText("Disconnect")
         self.connect_btn.setEnabled(True)
-        self.status_bar.showMessage("เชื่อมต่อแล้ว! กำลังลงทะเบียน Nickname กับเซิร์ฟเวอร์...")
+        self.conn_state = "registering"
+        self.update_status_bar_ui()
         self.server_input.setEnabled(False)
         self.port_input.setEnabled(False)
         self.nick_input.setEnabled(False)
 
     def on_irc_registered(self):
         """ ทำงานหลังจากลงทะเบียนสำเร็จ (ได้รับ 001) """
-        self.status_bar.showMessage("ลงทะเบียน Nickname สำเร็จ (Online)")
+        self.conn_state = "online"
+        self.update_status_bar_ui()
         # เข้าร่วมห้องแชทอัตโนมัติหากมีการระบุไว้
         auto_chan = self.channel_input.text().strip()
         if auto_chan:
@@ -917,7 +974,8 @@ class PIRCHMainWindow(QMainWindow):
         """ ทำงานเมื่อปิดการเชื่อมต่อ """
         self.connect_btn.setText("Connect")
         self.connect_btn.setEnabled(True)
-        self.status_bar.showMessage("ตัดการเชื่อมต่อแล้ว (Offline)")
+        self.conn_state = "offline"
+        self.update_status_bar_ui()
         self.server_input.setEnabled(True)
         self.port_input.setEnabled(True)
         self.nick_input.setEnabled(True)
@@ -1092,9 +1150,25 @@ class PIRCHMainWindow(QMainWindow):
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         
-        # หากตรวจพบคำสั่งหรือรหัสสถานะที่ถูกระบุให้ไปแสดงที่ห้อง Status โดยเฉพาะ
+        # ตรวจสอบเพื่อแยกแยะข้อความระบบ/NOTICE/Numeric Replies ไปที่แท็บ Status เสมอ
+        is_status_msg = False
+        status_codes = ["001", "002", "003", "004", "005", "251", "252", "253", "254", "255", "265", "266", "396"]
+        
         if text.startswith("[STATUS]"):
-            clean_text = text[len("[STATUS]"):].strip()
+            is_status_msg = True
+        else:
+            # ดักจับรหัสสถานะตัวเลข (Numeric Replies) หรือข้อความ NOTICE
+            for code in status_codes:
+                if f"[{code}]" in text or text.startswith(code):
+                    is_status_msg = True
+                    break
+            if "NOTICE" in text or "[NOTICE]" in text:
+                is_status_msg = True
+
+        if is_status_msg:
+            clean_text = text
+            if text.startswith("[STATUS]"):
+                clean_text = text[len("[STATUS]"):].strip()
             formatted_clean = self.format_mirc_text(clean_text)
             text_color = "#475569" if self.current_theme == "light" else "#94a3b8"
             msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>[{current_time}]</span> <span style='color: {text_color};'>{formatted_clean}</span></div>"
@@ -1126,7 +1200,7 @@ class PIRCHMainWindow(QMainWindow):
             self.status_display.append(msg_html)
 
     def on_message_received(self, target, nick, message):
-        """ เมื่อได้รับข้อความแชท """
+        """ เมื่อได้รับข้อความแชท จัดรูปแบบหน้าต่างให้เว้นช่องไฟมีย่อหน้าที่สวยงามอ่านง่าย """
         current_time = datetime.now().strftime("%H:%M")
         time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
         is_me = nick == self.nick_input.text().strip()
@@ -1143,6 +1217,7 @@ class PIRCHMainWindow(QMainWindow):
         is_pm = not target.startswith("#") and not target.startswith("&")
 
         if is_pm:
+            # กรณี Private Message กระซิบเดี่ยว
             bg_color = "rgba(236, 72, 153, 0.05)" if self.current_theme == "dark" else "rgba(236, 72, 153, 0.08)"
             border_left = "3px solid #ec4899"
             nick_color = "#ec4899"
@@ -1162,7 +1237,8 @@ class PIRCHMainWindow(QMainWindow):
             border_left = "none"
             nick_color = "#3b82f6" if is_me else "#10b981"
             text_color = "#f1f5f9" if self.current_theme == "dark" else "#1e293b"
-        
+
+        # ปรับปรุงสไตล์ HTML เพิ่มช่องไฟย่อหน้าด้านซ้าย ให้แยกเวลากับข้อความออกจากกันชัดเจน
         msg_html = f"""
         <div style='margin-bottom: 5px; padding: 3px 10px; background-color: {bg_color}; border-left: {border_left}; line-height: 140%;'>
             <span style='color: {time_color}; font-family: monospace; font-size: 12px; margin-right: 8px;'>[{current_time}]</span>
@@ -1172,6 +1248,7 @@ class PIRCHMainWindow(QMainWindow):
         """
         
         if is_pm:
+            # ถ้าส่งมาจากคนอื่น ห้องแชทจะเป็นชื่อคนนั้น แต่ถ้าเราส่งเอง ห้องแชทจะเป็นชื่อผู้รับ (target)
             room_name = target if is_me else nick
             room_key = room_name.lower()
             
@@ -1331,15 +1408,23 @@ class PIRCHMainWindow(QMainWindow):
         return nick.lstrip("@+%&~")
 
     def add_user_to_list(self, channel, nick):
-        """ เพิ่มผู้ใช้งานเข้าสู่ห้องแชทจำลอง/จริงแบบเรียลไทม์ และป้องกันชื่อซ้ำ """
+        """ เพิ่มผู้ใช้งานเข้าสู่ห้องแชทจริงแบบเรียลไทม์ แกะสิทธิ์และป้องกันตัวเลขยอดรวมเพี้ยน """
         chan_key = channel.lower()
         if chan_key in self.rooms:
             room = self.rooms[chan_key]
+            
+            # ล้างค่าชื่อเล่นเพื่อสกัดหาความซ้ำซ้อน
             clean_new_nick = self.clean_nick(nick)
-            # ลบชื่อเก่าที่อาจจะชนกันออกก่อน
-            room["users"] = [u for u in room["users"] if self.clean_nick(u) != clean_new_nick]
+            
+            # ลบชื่อเก่าที่อาจจะมียศค้างอยู่หรือซ้ำกันในระบบออกให้หมดก่อนบวกค่าใหม่
+            room["users"] = [u for u in room["users"] if self.clean_nick(u).lower() != clean_new_nick.lower()]
+            
+            # บันทึกชื่อพร้อมยศจริงจากเซิร์ฟเวอร์ลงไป
             room["users"].append(nick)
+            
+            # สั่งให้จัดเรียงลำดับยศเรียลไทม์ และคำนวณจำนวนคนในวงเล็บปุ่มแท็บใหม่ทันที
             self.update_user_list_ui(channel, room["users"])
+
 
     def remove_user_from_list(self, channel, nick):
         """ ลบผู้ใช้งานออกจากห้องแชทจำลอง/จริงแบบเรียลไทม์ """
@@ -1382,6 +1467,7 @@ class PIRCHMainWindow(QMainWindow):
             self.current_channel = channel
             
         # เพิ่มเข้าสู่ผู้ใช้งานของระบบแชทแบบเรียลไทม์ทันที
+        #self.add_user_to_list(channel, nick)
         self.add_user_to_list(channel, nick)
 
     def on_user_left(self, channel, nick):
@@ -1498,12 +1584,27 @@ class PIRCHMainWindow(QMainWindow):
         room["chat_display"].append(msg_html)
 
     def on_user_list(self, channel, users):
-        """ ได้รับรายชื่อผู้ใช้ทั้งหมดในห้องแชทจากคำสั่ง NAMES """
+        """ แก้ไขบั๊กรายชื่อมาไม่ครบ: ปรับระบบให้บวกสะสมรายชื่อต่อกัน (Append) แทนการเขียนทับ """
         chan_key = channel.lower()
         if chan_key in self.rooms:
-            # ใช้รายชื่อที่ได้รับทับค่าเดิม
-            self.rooms[chan_key]["users"] = users
-            self.update_user_list_ui(channel, users)
+            # 1. ดึงรายชื่อที่มีการจัดเก็บอยู่แล้วในแท็บนี้ขึ้นมา หากไม่มีให้สร้าง List ว่าง
+            current_stored_users = self.rooms[chan_key].get("users", [])
+            
+            for u in users:
+                u_str = u.strip()
+                if u_str:
+                    # 2. ตรวจสอบและสกัดชื่อแบบคลีนเพื่อป้องกันชื่อซ้ำซ้อนในระบบ
+                    clean_name = self.clean_nick(u_str)
+                    
+                    # ลบชื่อเก่าที่ซ้ำกันออกก่อนเพื่อป้องกันรายชื่อบั๊กเบิ้ลสะสม
+                    current_stored_users = [user for user in current_stored_users if self.clean_nick(user).lower() != clean_name.lower()]
+                    
+                    # 3. ใส่รายชื่อใหม่ต่อท้ายสะสมเข้าไปเรื่อย ๆ จนกว่าเซิร์ฟเวอร์จะส่งครบ
+                    current_stored_users.append(u_str)
+                    
+            # 4. บันทึกก้อนข้อมูลรายชื่อสะสมกลับเข้าหน่วยความจำ และอัปเดตหน้าจอ UI
+            self.rooms[chan_key]["users"] = current_stored_users
+            self.update_user_list_ui(channel, current_stored_users)
 
     def update_user_list_ui(self, channel, users_list):
         """ จัดเรียงลำดับสิทธิ์ผู้ใช้ และอัปเดตตัวเลขจำนวนคนแบบเรียลไทม์ถูกต้องตามความต้องการของผู้ใช้ """
@@ -1597,6 +1698,89 @@ class PIRCHMainWindow(QMainWindow):
             self.status_display.append(err_html)
             
         self.disconnect_irc()
+
+    def select_and_send_file(self):
+        """ เปลี่ยนระบบส่งไฟล์จาก DCC เป็นการอัปโหลดขึ้น tmpfiles.org แล้วส่งลิงก์เข้าห้องแชทอัตโนมัติ """
+        if self.irc_worker is not None:
+            # 1. นำเข้าไลบรารีจัดการไฟล์และเครือข่ายเว็บ
+            from PyQt6.QtWidgets import QFileDialog
+            import requests
+            import threading
+            import os
+
+            # 2. เปิดหน้าต่างให้ยูสเซอร์เลือกไฟล์จากในคอมพิวเตอร์ตามปกติ
+            file_path, _ = QFileDialog.getOpenFileName(self, "เลือกไฟล์หรือรูปภาพที่ต้องการส่ง", "", "All Files (*)")
+            if not file_path:
+                return  # ยูสเซอร์กดกดยกเลิก
+                
+            # ตรวจสอบขนาดไฟล์ไม่ให้เกิน 100MB ตามโควตาของ tmpfiles.org
+            if os.path.getsize(file_path) > 100 * 1024 * 1024:
+                self.append_system_msg("ระบบ: ขนาดไฟล์ใหญ่เกิน 100 MB ไม่สามารถอัปโหลดได้")
+                return
+
+            filename = os.path.basename(file_path)
+            self.append_system_msg(f"ระบบ: กำลังอัปโหลดไฟล์ {filename} ขึ้นระบบคลาวด์ชั่วคราว...")
+
+            # 3. แยกเธรด (Threading) ในการอัปโหลด เพื่อป้องกันไม่ให้หน้าต่างโปรแกรมค้างขณะส่งไฟล์ขนาดใหญ่
+            def upload_worker():
+                try:
+                    # พิกัด API สำหรับอัปโหลดของเว็บ tmpfiles.org
+                    api_url = "https://tmpfiles.org/api/v1/upload"
+                    
+                    with open(file_path, 'rb') as f:
+                        files = {'file': f}
+                        response = requests.post(api_url, files=files, timeout=60)
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        if res_data.get("status") == "success":
+                            # ดึงลิงก์ดาวน์โหลดตรงมาประมวลผล
+                            raw_url = res_data["data"]["url"]
+                            
+                            # แปลงฟอร์แมตลิงก์จากหน้าเว็บทั่วไป ให้กลายเป็นลิงก์ดาวน์โหลด/แสดงภาพตรง (Direct Link)
+                            # เช่น จาก tmpfiles.org/123 -> tmpfiles.org/dl/123 เพื่อให้กดดูรูปได้ทันที
+                            direct_download_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                            
+                            # ส่งลิงก์กลับไปจัดการที่ GUI thread อย่างปลอดภัย
+                            self.upload_success_signal.emit(direct_download_url)
+                        else:
+                            self.upload_status_signal.emit("ระบบ: เซิร์ฟเวอร์ปฏิเสธการอัปโหลดไฟล์")
+                    else:
+                        self.upload_status_signal.emit(f"ระบบ: อัปโหลดล้มเหลว (Error Code: {response.status_code})")
+                except Exception as e:
+                    self.upload_status_signal.emit(f"ระบบ: เกิดข้อผิดพลาดระหว่างอัปโหลด: {e}")
+
+            # สั่งให้เธรดอัปโหลดเริ่มต้นทำงานเบื้องหลังเบื้องหลัง
+            threading.Thread(target=upload_worker, daemon=True).start()
+        else:
+            self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อกับเซิร์ฟเวอร์ ไม่สามารถส่งไฟล์ได้")
+
+    def handle_upload_success(self, direct_download_url):
+        """ ฟังก์ชัน Callback บน Main Thread เมื่ออัปโหลดไฟล์สำเร็จและได้ลิงก์ตรงมาแล้ว """
+        # ดึงชื่อห้องแชทปัจจุบันที่ผู้ใช้เปิดหน้าจอคู่อยู่
+        current_tab_index = self.tab_widget.currentIndex()
+        current_room_name = self.tab_widget.tabText(current_tab_index)
+        
+        # ตรวจสอบว่าอยู่ในห้องแชทหรือแท็บกระซิบส่วนตัว เพื่อส่งข้อความออกไปหาเพื่อน
+        if current_room_name and not current_room_name.startswith("Status"):
+            # 1. ดึงข้อความเก่าในช่องพิมพ์เก็บไว้ก่อน (เผื่อยูสเซอร์พิมพ์ค้างไว้)
+            old_input_text = self.message_input.text()
+            
+            # 2. ยัดลิงก์รูปภาพเข้าไปในกล่องพิมพ์ด้านล่างของแอป
+            self.message_input.setText(direct_download_url)
+            
+            # 3. สั่งรันฟังก์ชันกดส่งข้อความของตัวแอป (ระบบจะยิง PRIVMSG เข้าเซิร์ฟเวอร์ให้ทันที)
+            self.send_message()
+            
+            # 4. คืนค่าข้อความเก่าที่ยูสเซอร์พิมพ์ค้างไว้กลับมาที่กล่องพิมพ์
+            if old_input_text:
+                self.message_input.setText(old_input_text)
+                
+            # แสดงลิงก์บนหน้าจอตัวเองด้วย
+            my_nick = self.nick_input.text().strip()
+            self.on_message_received(current_room_name, my_nick, direct_download_url)
+        else:
+            self.append_system_msg(f"ระบบ: อัปโหลดไฟล์สำเร็จ! ลิงก์ตรงของคุณคือ: {direct_download_url}")
 
     def show_emoji_picker(self):
         """ แสดงหน้าต่างเลือก Emoji UTF-8 ข้างบนปุ่ม Emoji """
@@ -1872,97 +2056,6 @@ class PIRCHMainWindow(QMainWindow):
                 # แสดงข้อความตัวเองขึ้นหน้าจอแชทช่องที่เลือกทันที
                 my_nick = self.nick_input.text()
                 self.on_message_received(target_chan, my_nick, text)
-
-    def select_and_send_file(self):
-        """ เปิดกล่องเลือกไฟล์และทำการจำลองการส่งไฟล์/รูปภาพ """
-        from PyQt6.QtWidgets import QFileDialog, QTextBrowser
-        from PyQt6.QtCore import QTimer
-        import os
-        import base64
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "เลือกไฟล์หรือรูปภาพเพื่อส่ง", "", "All Files (*);;Images (*.png *.jpg *.jpeg *.gif *.webp)"
-        )
-        if not file_path or not os.path.exists(file_path):
-            return
-
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-        
-        # จัดขนาดความละเอียดให้อ่านเข้าใจง่าย
-        if file_size > 1024 * 1024:
-            size_str = f"{file_size / (1024 * 1024):.2f} MB"
-        else:
-            size_str = f"{file_size / 1024:.1f} KB"
-
-        is_image = file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
-        
-        # อ่านไฟล์เป็น base64 เพื่อแสดงพรีวิวจำลองได้ทันที
-        data_url = ""
-        if is_image:
-            try:
-                with open(file_path, "rb") as f:
-                    encoded = base64.b64encode(f.read()).decode('utf-8')
-                    mime_type = "image/png"
-                    if file_name.lower().endswith('.jpg') or file_name.lower().endswith('.jpeg'):
-                        mime_type = "image/jpeg"
-                    elif file_name.lower().endswith('.gif'):
-                        mime_type = "image/gif"
-                    elif file_name.lower().endswith('.webp'):
-                        mime_type = "image/webp"
-                    
-                    data_url = f"data:{mime_type};base64,{encoded}"
-            except Exception as e:
-                print(f"Error reading file for base64: {e}")
-
-        # เพิ่มข้อความการส่งไฟล์เข้าไปในหน้าห้องแชทจำลองที่กำลังเลือกอยู่
-        current_tab_index = self.tab_widget.currentIndex()
-        tab_text = self.tab_widget.tabText(current_tab_index)
-        tab_text_clean = tab_text.split(" (")[0]
-        
-        # แสดงข้อความในฝั่งตนเองก่อน
-        from datetime import datetime
-        time_str = datetime.now().strftime("%H:%M")
-        
-        msg_html = f"<div style='margin-bottom: 4px;'><span style='color: #64748b;'>[{time_str}]</span> " \
-                   f"<span style='color: #818cf8; font-weight: bold;'>&lt;{self.nick_input.text()}&gt;</span> " \
-                   f"<span style='color: #10b981; font-weight: bold;'>[ส่งไฟล์สำเร็จ] 📎 {file_name} ({size_str})</span></div>"
-        
-        if is_image and data_url:
-            msg_html += f"<div style='margin-top: 4px; margin-bottom: 8px;'><img src='{data_url}' width='240' style='border: 1px solid #cbd5e1; border-radius: 6px;' /></div>"
-        else:
-            msg_html += f"<div style='margin-top: 4px; margin-bottom: 8px; font-family: monospace; font-size: 11px; color: #64748b; background: #e2e8f0; padding: 6px; border-radius: 4px;'>📄 {file_name} ({size_str}) [ดาวน์โหลดจำลอง]</div>"
-
-        # แสดงข้อมูลบน chat browser ของแท็บปัจจุบัน
-        current_widget = self.tab_widget.currentWidget()
-        if current_widget:
-            chat_display = current_widget.findChild(QTextBrowser)
-            if chat_display:
-                chat_display.append(msg_html)
-
-        # หากมีการเชื่อมต่อจริง ให้ส่งลิงก์จำลอง (เช่นอัปโหลดไปยังบริการแชร์ไฟล์) เพื่อไม่ให้กระทบต่อ protocol IRC ปกติ
-        if self.irc_worker and self.irc_worker.is_connected:
-            target = tab_text_clean
-            self.irc_worker.send_line(f"PRIVMSG {target} :[ไฟล์สำเร็จ] 📎 {file_name} ({size_str})")
-            
-        # มีเสียงตอบรับหรือแชทตอบกลับจากบอทหลังจาก 1 วินาที เพื่อให้ผู้ใช้รู้สึกฟินและเป็นธรรมชาติ
-        def bot_reply():
-            bot_name = "Python_Expert" if tab_text_clean == "#pyqt6" else "PyQt6_Fan"
-            reply_text = f"ได้รับรูปภาพ \"{file_name}\" เรียบร้อยแล้วครับ! ภาพสวยคมชัดมาก 🖼️✨" if is_image \
-                else f"ได้รับไฟล์ \"{file_name}\" ({size_str}) เรียบร้อยแล้วครับ ขอบคุณที่ร่วมแบ่งปันข้อมูล! 📂🤖"
-            
-            bot_html = f"<div style='margin-bottom: 4px;'><span style='color: #64748b;'>[{time_str}]</span> " \
-                       f"<span style='color: #c084fc; font-weight: bold;'>&lt;{bot_name}&gt;</span> " \
-                       f"<span style='color: #475569;'>{reply_text}</span></div>"
-            
-            if current_widget:
-                chat_display = current_widget.findChild(QTextBrowser)
-                if chat_display:
-                    chat_display.append(bot_html)
-
-        # จำลองการส่งข้อความตอบกลับจากระบบหรือบอท
-        QTimer.singleShot(1000, bot_reply)
-
     def play_radio(self, station):
         """ เล่นสถานีวิทยุออนไลน์ที่กำหนด """
         mquest_url = "http://icecast.thaiirc.com:8000/ices"
@@ -2018,6 +2111,58 @@ class PIRCHMainWindow(QMainWindow):
                 self.audio_output.setVolume(value / 100.0)
             except Exception:
                 pass
+
+    def update_status_bar_ui(self):
+        """ อัปเดตข้อมูลสถานะใน Status Bar ด้านล่าง """
+        is_dark = getattr(self, "current_theme", "light") == "dark"
+        
+        # สีสันสำหรับความแตกต่างของสถานะ
+        green_color = "#34d399" if is_dark else "#059669"
+        amber_color = "#fbbf24" if is_dark else "#d97706"
+        red_color = "#f87171" if is_dark else "#dc2626"
+        gray_color = "#64748b" if is_dark else "#94a3b8"
+        
+        # สีสันสำหรับข้อมูล Server, Room, Nick
+        blue_color = "#60a5fa" if is_dark else "#2563eb"
+        purple_color = "#a78bfa" if is_dark else "#7c3aed"
+        
+        # 1. แสดงสถานะสีสันตามสไตล์ React
+        if self.conn_state == "online":
+            status_text = f"<span style='color: {green_color}; font-weight: bold;'>ONLINE</span>"
+        elif self.conn_state in ["connecting", "registering"]:
+            status_text = f"<span style='color: {amber_color}; font-weight: bold;'>CONNECTING...</span>"
+        elif self.conn_state == "disconnecting":
+            status_text = f"<span style='color: {red_color}; font-weight: bold;'>DISCONNECTING...</span>"
+        else:
+            status_text = f"<span style='color: {gray_color}; font-weight: bold;'>OFFLINE</span>"
+            
+        self.status_lbl.setText(f"Status: {status_text}")
+        
+        # 2. ค้นหา Server, Nick, Room
+        server = self.server_input.text().strip() or "irc.thaiirc.com"
+        nick = self.nick_input.text().strip() or "pyIRCH"
+        
+        current_idx = self.tab_widget.currentIndex() if hasattr(self, "tab_widget") else -1
+        if current_idx >= 0:
+            tab_name = self.tab_widget.tabText(current_idx)
+            room = tab_name.split(" (")[0]
+        else:
+            room = "-"
+            
+        if self.conn_state in ["online", "registering"]:
+            # ถ้าเชื่อมต่อแล้ว ให้ดึงข้อมูลจริงมาแสดง
+            self.server_lbl.setText(f"Server: <b style='color: {blue_color}; font-family: monospace;'>{server}</b>")
+            self.room_lbl.setText(f"Room: <b style='color: {purple_color}; font-family: monospace;'>{room}</b>")
+            self.nick_lbl.setText(f"Nick: <b style='color: {green_color}; font-family: monospace;'>{nick}</b>")
+        else:
+            self.server_lbl.setText(f"Server: <span style='color: {gray_color}; font-family: monospace;'>-</span>")
+            self.room_lbl.setText(f"Room: <span style='color: {gray_color}; font-family: monospace;'>-</span>")
+            self.nick_lbl.setText(f"Nick: <span style='color: {gray_color}; font-family: monospace;'>-</span>")
+            
+        # 3. อัปเดตเวลา Local Time
+        from datetime import datetime
+        local_time_str = datetime.now().strftime("%H:%M:%S")
+        self.time_lbl.setText(f"Local Time: <span style='font-family: monospace;'>{local_time_str}</span>")
 
     def apply_theme(self, theme):
         """ สลับการตกแต่งความสวยงามของโปรแกรมให้เป็นสไตล์ Modern UI ตามธีมมืด/สว่าง """
@@ -2149,11 +2294,19 @@ class PIRCHMainWindow(QMainWindow):
                     font-weight: bold;
                 }
                 QStatusBar {
-                    background-color: #0f172a;
-                    border-top: none;
+                    background-color: #020617;
+                    border-top: 1px solid #1e293b;
                     color: #94a3b8;
                     font-size: 11px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
+                }
+                QStatusBar::item {
+                    border: none;
+                }
+                #StatusLbl, #ServerLbl, #RoomLbl, #NickLbl, #TimeLbl {
+                    font-family: 'Segoe UI', 'Inter', 'Arial';
+                    font-size: 11px;
+                    color: #94a3b8;
                 }
                 QTabWidget::pane {
                     border: none;
@@ -2309,11 +2462,19 @@ class PIRCHMainWindow(QMainWindow):
                     font-weight: bold;
                 }
                 QStatusBar {
-                    background-color: #f8fafc;
-                    border-top: none;
-                    color: #64748b;
+                    background-color: #f1f5f9;
+                    border-top: 1px solid #cbd5e1;
+                    color: #475569;
                     font-size: 11px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
+                }
+                QStatusBar::item {
+                    border: none;
+                }
+                #StatusLbl, #ServerLbl, #RoomLbl, #NickLbl, #TimeLbl {
+                    font-family: 'Segoe UI', 'Inter', 'Arial';
+                    font-size: 11px;
+                    color: #475569;
                 }
                 QTabWidget::pane {
                     border: none;
@@ -2348,6 +2509,37 @@ class PIRCHMainWindow(QMainWindow):
         self.disconnect_irc()
         event.accept()
 
+    def on_user_double_clicked(self, item):
+        """ ระบบดับเบิ้ลคลิกที่ชื่อคนเพื่อเปิดแท็บกระซิบส่วนตัว (Query) สำหรับโค้ดจริงใน PDF """
+        raw_nick = item.text().strip()
+        if not raw_nick:
+            return
+            
+        # ล้างสัญลักษณ์ยศหน้าชื่อ (@, +) ออกเพื่อให้ได้ชื่อเล่นเพียวๆ
+        clean_target_nick = self.clean_nick(raw_nick)
+        
+        # ป้องกันไม่ให้ดับเบิ้ลคลิกคุยกับตัวเอง
+        my_current_nick = self.nick_input.text().strip()
+        if clean_target_nick.lower() == my_current_nick.lower():
+            return
+
+        target_key = clean_target_nick.lower()
+        
+        # ถ้ายังไม่เคยคุยส่วนตัวกับคนนี้ ให้สร้างแท็บใหม่ขึ้นมา
+        if target_key not in self.rooms:
+            # เรียกฟังก์ชันจริงในเครื่องของคุณเพื่อสร้างแท็บชื่อเล่นของเพื่อน
+            self.get_or_create_channel_tab(clean_target_nick)
+            
+            # ใส่ข้อความต้อนรับระบบในช่องแชทใหม่
+            current_time = datetime.now().strftime("%H:%M")
+            welcome_html = f"<div style='color: #64748b; font-size: 12px; padding: 5px 10px;'>[{current_time}] *** เริ่มต้นการสนทนาส่วนตัวกับ {clean_target_nick}</div>"
+            self.rooms[target_key]["chat_display"].append(welcome_html)
+            
+        # สั่งให้ระบบสลับหน้าจอ (Switch Tab) ไปยังแท็บคุยส่วนตัวคนนี้ทันที
+        for index in range(self.tab_widget.count()):
+            if self.tab_widget.tabText(index).lower() == clean_target_nick.lower():
+                self.tab_widget.setCurrentIndex(index)
+                break
 
 # =====================================================================
 # 3. จุดเริ่มต้นรันโปรแกรม (Entry Point)

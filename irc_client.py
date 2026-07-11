@@ -449,6 +449,7 @@ class PIRCHMainWindow(QMainWindow):
         self.current_channel = ""
         self.rooms = {}
         self.current_theme = "light"
+        self.conn_state = "offline"
         self.font_size_idx = 1 # 0: เล็ก, 1: กลาง, 2: ใหญ่
         self.mention_notify_enabled = True
         
@@ -703,8 +704,42 @@ class PIRCHMainWindow(QMainWindow):
         # แถบสถานะด้านล่างสุด (Status Bar)
         # ----------------------------------------------------
         self.status_bar = QStatusBar()
+        self.status_bar.setObjectName("MyStatusBar")
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("พร้อมใช้งาน (Status: Offline)")
+
+        self.status_lbl = QLabel("Status: OFFLINE")
+        self.status_lbl.setObjectName("StatusLbl")
+        self.status_lbl.setMargin(0)
+
+        self.server_lbl = QLabel("Server: -")
+        self.server_lbl.setObjectName("ServerLbl")
+        self.server_lbl.setMargin(0)
+
+        self.room_lbl = QLabel("Room: -")
+        self.room_lbl.setObjectName("RoomLbl")
+        self.room_lbl.setMargin(0)
+
+        self.nick_lbl = QLabel("Nick: -")
+        self.nick_lbl.setObjectName("NickLbl")
+        self.nick_lbl.setMargin(0)
+
+        self.time_lbl = QLabel("Local Time: --:--:--")
+        self.time_lbl.setObjectName("TimeLbl")
+        self.time_lbl.setMargin(0)
+
+        self.status_bar.addWidget(self.status_lbl)
+        self.status_bar.addWidget(self.server_lbl)
+        self.status_bar.addWidget(self.room_lbl)
+        self.status_bar.addWidget(self.nick_lbl)
+        self.status_bar.addPermanentWidget(self.time_lbl)
+
+        # ตั้งค่าสัญญาณอัปเดตเมื่อเลือกแท็บเปลี่ยน
+        self.tab_widget.currentChanged.connect(self.update_status_bar_ui)
+
+        # ตัวแปรสถานะและการอัปเดตเรียลไทม์
+        self.statusbar_timer = QTimer(self)
+        self.statusbar_timer.timeout.connect(self.update_status_bar_ui)
+        self.statusbar_timer.start(1000)
 
     def get_or_create_channel_tab(self, channel):
         """ ค้นหาหรือสร้างแถบห้องแชทใหม่แยกต่างหากสำหรับ channel """
@@ -884,12 +919,14 @@ class PIRCHMainWindow(QMainWindow):
         
         self.connect_btn.setText("Connecting...")
         self.connect_btn.setEnabled(False)
-        self.status_bar.showMessage("กำลังกำลังพยายามเชื่อมต่อ...")
+        self.conn_state = "connecting"
+        self.update_status_bar_ui()
 
     def disconnect_irc(self):
         """ ตัดการเชื่อมต่ออย่างเป็นระบบและปลอดภัย """
         if self.irc_worker:
-            self.status_bar.showMessage("กำลังตัดการเชื่อมต่อ...")
+            self.conn_state = "disconnecting"
+            self.update_status_bar_ui()
             # ส่งคำสั่ง QUIT ไปแจ้งเซิร์ฟเวอร์ก่อนปิด Socket
             try:
                 self.irc_worker.send_line("QUIT :Leaving with pyIRCH98")
@@ -908,14 +945,16 @@ class PIRCHMainWindow(QMainWindow):
         """ ทำงานหลังจาก Socket ต่อติดเสร็จสิ้น """
         self.connect_btn.setText("Disconnect")
         self.connect_btn.setEnabled(True)
-        self.status_bar.showMessage("เชื่อมต่อแล้ว! กำลังลงทะเบียน Nickname กับเซิร์ฟเวอร์...")
+        self.conn_state = "registering"
+        self.update_status_bar_ui()
         self.server_input.setEnabled(False)
         self.port_input.setEnabled(False)
         self.nick_input.setEnabled(False)
 
     def on_irc_registered(self):
         """ ทำงานหลังจากลงทะเบียนสำเร็จ (ได้รับ 001) """
-        self.status_bar.showMessage("ลงทะเบียน Nickname สำเร็จ (Online)")
+        self.conn_state = "online"
+        self.update_status_bar_ui()
         # เข้าร่วมห้องแชทอัตโนมัติหากมีการระบุไว้
         auto_chan = self.channel_input.text().strip()
         if auto_chan:
@@ -935,7 +974,8 @@ class PIRCHMainWindow(QMainWindow):
         """ ทำงานเมื่อปิดการเชื่อมต่อ """
         self.connect_btn.setText("Connect")
         self.connect_btn.setEnabled(True)
-        self.status_bar.showMessage("ตัดการเชื่อมต่อแล้ว (Offline)")
+        self.conn_state = "offline"
+        self.update_status_bar_ui()
         self.server_input.setEnabled(True)
         self.port_input.setEnabled(True)
         self.nick_input.setEnabled(True)
@@ -2072,6 +2112,58 @@ class PIRCHMainWindow(QMainWindow):
             except Exception:
                 pass
 
+    def update_status_bar_ui(self):
+        """ อัปเดตข้อมูลสถานะใน Status Bar ด้านล่าง """
+        is_dark = getattr(self, "current_theme", "light") == "dark"
+        
+        # สีสันสำหรับความแตกต่างของสถานะ
+        green_color = "#34d399" if is_dark else "#059669"
+        amber_color = "#fbbf24" if is_dark else "#d97706"
+        red_color = "#f87171" if is_dark else "#dc2626"
+        gray_color = "#64748b" if is_dark else "#94a3b8"
+        
+        # สีสันสำหรับข้อมูล Server, Room, Nick
+        blue_color = "#60a5fa" if is_dark else "#2563eb"
+        purple_color = "#a78bfa" if is_dark else "#7c3aed"
+        
+        # 1. แสดงสถานะสีสันตามสไตล์ React
+        if self.conn_state == "online":
+            status_text = f"<span style='color: {green_color}; font-weight: bold;'>ONLINE</span>"
+        elif self.conn_state in ["connecting", "registering"]:
+            status_text = f"<span style='color: {amber_color}; font-weight: bold;'>CONNECTING...</span>"
+        elif self.conn_state == "disconnecting":
+            status_text = f"<span style='color: {red_color}; font-weight: bold;'>DISCONNECTING...</span>"
+        else:
+            status_text = f"<span style='color: {gray_color}; font-weight: bold;'>OFFLINE</span>"
+            
+        self.status_lbl.setText(f"Status: {status_text}")
+        
+        # 2. ค้นหา Server, Nick, Room
+        server = self.server_input.text().strip() or "irc.thaiirc.com"
+        nick = self.nick_input.text().strip() or "pyIRCH"
+        
+        current_idx = self.tab_widget.currentIndex() if hasattr(self, "tab_widget") else -1
+        if current_idx >= 0:
+            tab_name = self.tab_widget.tabText(current_idx)
+            room = tab_name.split(" (")[0]
+        else:
+            room = "-"
+            
+        if self.conn_state in ["online", "registering"]:
+            # ถ้าเชื่อมต่อแล้ว ให้ดึงข้อมูลจริงมาแสดง
+            self.server_lbl.setText(f"Server: <b style='color: {blue_color}; font-family: monospace;'>{server}</b>")
+            self.room_lbl.setText(f"Room: <b style='color: {purple_color}; font-family: monospace;'>{room}</b>")
+            self.nick_lbl.setText(f"Nick: <b style='color: {green_color}; font-family: monospace;'>{nick}</b>")
+        else:
+            self.server_lbl.setText(f"Server: <span style='color: {gray_color}; font-family: monospace;'>-</span>")
+            self.room_lbl.setText(f"Room: <span style='color: {gray_color}; font-family: monospace;'>-</span>")
+            self.nick_lbl.setText(f"Nick: <span style='color: {gray_color}; font-family: monospace;'>-</span>")
+            
+        # 3. อัปเดตเวลา Local Time
+        from datetime import datetime
+        local_time_str = datetime.now().strftime("%H:%M:%S")
+        self.time_lbl.setText(f"Local Time: <span style='font-family: monospace;'>{local_time_str}</span>")
+
     def apply_theme(self, theme):
         """ สลับการตกแต่งความสวยงามของโปรแกรมให้เป็นสไตล์ Modern UI ตามธีมมืด/สว่าง """
         self.current_theme = theme
@@ -2202,11 +2294,19 @@ class PIRCHMainWindow(QMainWindow):
                     font-weight: bold;
                 }
                 QStatusBar {
-                    background-color: #0f172a;
-                    border-top: none;
+                    background-color: #020617;
+                    border-top: 1px solid #1e293b;
                     color: #94a3b8;
                     font-size: 11px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
+                }
+                QStatusBar::item {
+                    border: none;
+                }
+                #StatusLbl, #ServerLbl, #RoomLbl, #NickLbl, #TimeLbl {
+                    font-family: 'Segoe UI', 'Inter', 'Arial';
+                    font-size: 11px;
+                    color: #94a3b8;
                 }
                 QTabWidget::pane {
                     border: none;
@@ -2362,11 +2462,19 @@ class PIRCHMainWindow(QMainWindow):
                     font-weight: bold;
                 }
                 QStatusBar {
-                    background-color: #f8fafc;
-                    border-top: none;
-                    color: #64748b;
+                    background-color: #f1f5f9;
+                    border-top: 1px solid #cbd5e1;
+                    color: #475569;
                     font-size: 11px;
                     font-family: 'Segoe UI', 'Inter', 'Arial';
+                }
+                QStatusBar::item {
+                    border: none;
+                }
+                #StatusLbl, #ServerLbl, #RoomLbl, #NickLbl, #TimeLbl {
+                    font-family: 'Segoe UI', 'Inter', 'Arial';
+                    font-size: 11px;
+                    color: #475569;
                 }
                 QTabWidget::pane {
                     border: none;
