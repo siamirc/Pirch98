@@ -3,6 +3,7 @@ import socket
 import re
 import threading
 from datetime import datetime
+import random
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTextBrowser, QLabel, QSplitter,
@@ -15,7 +16,7 @@ import sys
 import socket
 from datetime import datetime
 # 🌟 เพิ่มบรรทัดนี้เข้าไปด้านบนสุดของไฟล์ครับ
-import winsound 
+import winsound  
 
 # =====================================================================
 # 1. คลาส IRCWorker สำหรับจัดการเชื่อมต่อและรับส่งข้อมูลผ่าน TCP Socket
@@ -35,7 +36,7 @@ class IRCWorker(QObject):
     mode_changed = pyqtSignal(str, str, str)     # (channel, sender_nick, mode_params)
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="PyQt6 pIRCH Client"):
+    def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="pyIRCH98 Client"):
         super().__init__()
         self.server = server
         self.port = port
@@ -324,11 +325,13 @@ class EmojiPicker(QDialog):
         self.init_ui()
 
     def init_ui(self):
+        from PyQt6.QtWidgets import QVBoxLayout, QTabWidget, QScrollArea, QWidget, QGridLayout, QPushButton, QSpacerItem, QSizePolicy
+        from PyQt6.QtCore import Qt
+
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(320, 260)
         self.resize(320, 260)
         
-        # Apply style sheet based on dark/light theme
         if self.is_dark:
             bg_color = "#1e293b"
             text_color = "#f1f5f9"
@@ -357,10 +360,10 @@ class EmojiPicker(QDialog):
             QTabBar::tab {{
                 background-color: {tab_bg};
                 color: {text_color};
-                padding: 6px 10px;
+                padding: 6px 14px;
                 border: none;
                 font-family: 'Segoe UI', Arial;
-                font-size: 11px;
+                font-size: 13px;
             }}
             QTabBar::tab:selected {{
                 background-color: {tab_selected_bg};
@@ -380,13 +383,29 @@ class EmojiPicker(QDialog):
             QPushButton:hover {{
                 background-color: {btn_hover_bg};
             }}
+            QScrollBar:vertical {{
+                border: none;
+                background: transparent;
+                width: 6px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {border_color};
+                min-height: 20px;
+                border-radius: 3px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                border: none;
+                background: none;
+            }}
         """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        tab_widget = QTabWidget()
-        layout.addWidget(tab_widget)
+        self.tab_widget = QTabWidget()
+        layout.addWidget(self.tab_widget)
+
 
         categories = {
             "😃": ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🥸", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓", "🤔", "🫣", "🤭", "🫢", "🫡", "🤫", "🫠", "🤝", "👍", "👎", "👊", "✊", "🤛", "🤜", "🤞", "✌️", "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉", "👆", "👇", "☝️", "✋", "🤚", "🖐", "🖖", "👋", "🤙", "💪", "🦾", "🖕", "✍️", "🙏", "👏", "🙌", "🫶", "👐", "👤", "👥", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟"],
@@ -396,10 +415,11 @@ class EmojiPicker(QDialog):
             "🚗": ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚", "🚛", "🚜", "🏍", "🛵", "🚲", "🛴", "🛹", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛸", "🚁", "⛵️", "🛶", "🚤", "🛳", "⛴", "🚢", "⚓️", "🛟", "🚀", "🛸", "🗺", "🧭", "🏔", "⛰", "🌋", "🗻", "🏕", "🏖", "🏜", "🏝", "🏞", "🏟", "🏛", "🏗", "🧱", "🏘", "🏚", "🏠", "🏡", "🏢", "🏣", "🏤", "漸", "🏦", "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪️", "🕌", "🛕", "🕋", "⛩", "⛲️", "⛺️", "🌁", "🌃", "🏙", "🌄", "🌅", "🌆", "🌇", "🌉", "🎠", "🎡", "🎢"],
             "💡": ["⌚️", "📱", "📲", "💻", "⌨️", "🖥", "🖨", "🖱", "🖲", "🕹", "🗜", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽", "🎞", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙", "🎚", "🎛", "🧭", "⏱", "⏲", "⏰", "🕰", "⌛️", "⏳", "📡", "🔋", "🔌", "💡", "🔦", "🕯", "🪔", "🧯", "🛢", "💸", "💵", "💴", "💶", "💷", "🪙", "💰", "💳", "💎", "⚖️", "🪜", "🧰", "🪛", "🔧", "🔨", "⚒", "🛠", "⛏", "🪓", "⚙️", "🧱", "🪨", "🪵", "⛓", "🪝", "🔫", "💣", "🔪", "🗡", "⚔️", "🛡", "🚬", "⚰️", "🪦", "⚱️", "🔮", "🧿", "📿", "💈", "🧪", "🧫", "🧬", "🔬", "🔭", "📡", "🎈", "🎉", "🎊", "🧧", "🎀", "🎁", "🪄", "🪅", "🎎", "🎏", "🎐", "✉️", "📩", "📨", "📧", "💌", "📥", "📤", "📦", "🏷", "📪", "📫", "📬", "📭", "📮", "🗳", "✏️", "✒️", "🖋", "🖊", "🖌", "🖍", "📝", "📁", "📂", "🗂", "📅", "📆", "🗒", "🗓", "📇", "📈", "📉", "📊", "📋", "📌", "📍", "📎", "🖇", "📐", "📏", "✂️", "🗃", "🗄", "🗑", "🔒", "🔓", "🔏", "🔐", "🔑", "🗝", "🔨", "🪓", "🩹", "🩺", "🩸", "🩻", "🛌", "🛋", "🪑", "🚽", "🪠", "🚿", "🛁", "🧼", "🪥", "🪮", "🧽", "🧴", "🛎", "🚪", "🪞", "🪟", "🧺", "🧹", "🧸", "🪆", "🧷", "🧦", "👗", "👘", "👚", "👛", "👜", "👝", "🎒", "👞", "👟", "🥾", "🥿", "👠", "👡", "👢", "👑", "👒", "🎩", "🎓", "🧢", "⛑", "💄", "💍", "💎"]
         }
-
         for cat_name, emojis in categories.items():
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             
             content_widget = QWidget()
             content_widget.setStyleSheet(f"background-color: {bg_color};")
@@ -408,8 +428,8 @@ class EmojiPicker(QDialog):
             grid.setContentsMargins(6, 6, 6, 6)
             grid.setSpacing(4)
             
-            # Populate grid
-            cols = 8
+            cols = 7 
+            row = 0
             for i, emoji in enumerate(emojis):
                 btn = QPushButton(emoji)
                 btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -418,12 +438,35 @@ class EmojiPicker(QDialog):
                 col = i % cols
                 grid.addWidget(btn, row, col)
                 
+            spacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+            grid.addItem(spacer, row + 1, 0, 1, cols)
+                
             scroll.setWidget(content_widget)
-            tab_widget.addTab(scroll, cat_name)
+            self.tab_widget.addTab(scroll, cat_name)
+
+    def wheelEvent(self, event):
+        """ ฟังก์ชันดักจับล้อเมาส์: ปลดล็อกระเบียบวินโดว์ สั่งเลื่อนทีละสเต็ปตามแรงหมุนจริง """
+        current_scroll = self.tab_widget.currentWidget()
+        if current_scroll and isinstance(current_scroll, QScrollArea):
+            scrollbar = current_scroll.verticalScrollBar()
+            
+            # ดึงทิศทางการหมุน (ถ้าค่าเป็นบวกคือหมุนขึ้น ถ้าเป็นลบคือหมุนลง)
+            delta = event.angleDelta().y()
+            
+            # บังคับเลื่อนหน้าจอทีละสเต็ป (Step) ป้องกันปัญหาระบบ Windows บล็อกโฟกัสตัวแปรเลขจำนวน
+            if delta > 0:
+                scrollbar.stepBy(-3) # หมุนขึ้น ให้ขยับแถบเลื่อนขึ้น 3 หน่วย
+            elif delta < 0:
+                scrollbar.stepBy(3)  # หมุนลง ให้ขยับแถบเลื่อนลง 3 หน่วย
+                
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
     def on_emoji_clicked(self, emoji):
         self.selected_emoji = emoji
         self.accept()
+
 
 
 # =====================================================================
@@ -436,7 +479,7 @@ class PIRCHMainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("pyIRCH98 - Classic IRC Client")
+        self.setWindowTitle("pyIRCH98 - Classic ThaiIRC Client")
         self.resize(800, 600)
         
         # เชื่อมต่อสัญญาณควบคุมระบบอัปโหลดไฟล์เสร็จสิ้นแบบ Thread-safe
@@ -500,19 +543,45 @@ class PIRCHMainWindow(QMainWindow):
         # ช่องใส่ Server
         top_layout.addWidget(QLabel("Server:"))
         self.server_input = QLineEdit("irc.thaiirc.com")
-        self.server_input.setPlaceholderText("e.g. irc.thaiirc.com")
+        self.server_input.setPlaceholderText("e.g. irc.thaiirc.com")  
+        self.server_input.setStyleSheet("""
+            QLineEdit {
+                height: 25px;
+                font-size: 14px;
+                font-family: 'Segoe UI', Arial;
+                padding-left: 4px;
+            }
+        """)
         top_layout.addWidget(self.server_input)
 
         # ช่องใส่ Port
         top_layout.addWidget(QLabel("Port:"))
         self.port_input = QLineEdit("6667")
         self.port_input.setFixedWidth(50)
+        self.port_input.setStyleSheet("""
+            QLineEdit {
+                height: 25px;
+                font-size: 14px;
+                font-family: 'Segoe UI', Arial;
+                padding-left: 4px;
+            }
+        """)
         top_layout.addWidget(self.port_input)
 
         # ช่องใส่ Nickname
         top_layout.addWidget(QLabel("Nick:"))
-        self.nick_input = QLineEdit("pyIRCH")
-        self.nick_input.setFixedWidth(100)
+        random_number = random.randint(1000, 9999)
+        # สั่งให้นำชื่อ pyIRCH มาต่อท้ายด้วยตัวเลขสุ่มนั้นแล้วยัดใส่ช่องข้อความ
+        self.nick_input = QLineEdit(f"pyIRCH{random_number}")
+        self.nick_input.setFixedWidth(150)
+        self.nick_input.setStyleSheet("""
+            QLineEdit {
+                height: 25px;
+                font-size: 14px;
+                font-family: 'Segoe UI', Arial;
+                padding-left: 4px;
+            }
+        """)        
         top_layout.addWidget(self.nick_input)
 
         # ปุ่มเชื่อมต่อ Connect/Disconnect
@@ -523,19 +592,19 @@ class PIRCHMainWindow(QMainWindow):
 
         # ปุ่มสลับ Theme โหมดมืด/สว่าง
         self.theme_btn = QPushButton("🌙 Dark Mode")
-        self.theme_btn.setFixedWidth(100)
+        self.theme_btn.setFixedWidth(120)
         self.theme_btn.clicked.connect(self.toggle_theme)
         top_layout.addWidget(self.theme_btn)
 
         # ปุ่มปรับขนาดตัวอักษร 3 ระดับ
         self.font_btn = QPushButton("🔍 ขนาด: กลาง")
-        self.font_btn.setFixedWidth(100)
+        self.font_btn.setFixedWidth(120)
         self.font_btn.clicked.connect(self.change_font_size)
         top_layout.addWidget(self.font_btn)
 
         # ปุ่มสลับการแจ้งเตือนเมื่อโดนแทกชื่อ (On/Off)
         self.mention_btn = QPushButton("🔔 แทกชื่อ: เปิด")
-        self.mention_btn.setFixedWidth(100)
+        self.mention_btn.setFixedWidth(120)
         self.mention_btn.clicked.connect(self.toggle_mention_notify)
         top_layout.addWidget(self.mention_btn)
 
@@ -592,7 +661,15 @@ class PIRCHMainWindow(QMainWindow):
         radio_layout.addWidget(QLabel("Join:"))
         self.channel_input = QLineEdit("#thaiirc")
         self.channel_input.setFixedWidth(80)
-        self.channel_input.setToolTip("ระบุห้องแชทที่จะเข้าร่วม (เช่น #pyqt6)")
+        self.channel_input.setStyleSheet("""
+            QLineEdit {
+                height: 25px;
+                font-size: 14px;
+                font-family: 'Segoe UI', Arial;
+                padding-left: 4px;
+            }
+        """)        
+        self.channel_input.setToolTip("ระบุห้องแชทที่จะเข้าร่วม (เช่น #thaiirc)")
         radio_layout.addWidget(self.channel_input)
 
         radio_layout.addWidget(QLabel("Pass:"))
@@ -600,12 +677,21 @@ class PIRCHMainWindow(QMainWindow):
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setPlaceholderText("SASL")
         self.password_input.setFixedWidth(70)
+        self.password_input.setStyleSheet("""
+            QLineEdit {
+                height: 25px;
+                font-size: 14px;
+                font-family: 'Segoe UI', Arial;
+                padding-left: 4px;
+            }
+        """)
         self.password_input.setToolTip("รหัสผ่าน SASL (หากจำเป็น)")
         radio_layout.addWidget(self.password_input)
 
         self.ssl_checkbox = QCheckBox("SSL")
         self.ssl_checkbox.setChecked(False)
         self.ssl_checkbox.stateChanged.connect(self.on_ssl_state_changed)
+        self.ssl_checkbox.setStyleSheet("color: #A9A9A9;") 
         radio_layout.addWidget(self.ssl_checkbox)
 
         radio_layout.addStretch()
@@ -648,6 +734,7 @@ class PIRCHMainWindow(QMainWindow):
             "<div style='margin-bottom: 4px;'><span style='color: #10b981; font-weight: bold;'>✔ ระบบแยกเธรด (Multithreading) ทำงานเบื้องหลังด้วย QThread ไม่ค้าง 100%</span></div>"
             "<div style='margin-bottom: 4px;'><span style='color: #475569;'>✔ ออกแบบอินเตอร์เฟสใหม่แยกแท็บห้องแชทเดี่ยว เพื่อป้องกันไม่ให้ข้อความสับสนผสมปนเปกัน</span></div>"
             "<div style='margin-bottom: 4px;'><span style='color: #0891b2; font-weight: bold;'>✔ เมนูพิเศษข่าวสารเซิร์ฟเวอร์ (MOTD) ถูกแยกออกจากห้องแชทหลักเรียบร้อย</span></div>"
+            "<div style='margin-bottom: 4px;'><span style='color: #0891b2; font-weight: bold;'>✔ ปุ่มเมนูส่งรูป/ไฟล์ (File/Image Sharing) หน้าช่องพิมพ์ข้อความ และปุ่มส่ง emoji (UTF8)</span></div>"
             "<div style='margin-bottom: 4px;'><span style='color: #ec4899; font-weight: bold;'>✔ จัดลำดับสิทธิ์ผู้ใช้งานจาก Operator (@) -> Voice (+) -> ผู้ใช้ทั่วไป อย่างถูกต้องเรียบร้อย</span></div>"
         )
         status_layout.addWidget(self.status_display)
@@ -681,7 +768,7 @@ class PIRCHMainWindow(QMainWindow):
         bottom_layout.addWidget(self.attach_btn)
 
         self.message_input = QLineEdit()
-        self.message_input.setPlaceholderText("พิมพ์ข้อความแชท หรือพิมพ์คำสั่ง เช่น /join #pyqt6 จากนั้นกด Enter...")
+        self.message_input.setPlaceholderText("พิมพ์ข้อความแชท หรือพิมพ์คำสั่ง เช่น /join #thaiirc จากนั้นกด Enter...")
         self.message_input.returnPressed.connect(self.send_message)
         self.message_input.installEventFilter(self)
         bottom_layout.addWidget(self.message_input)
@@ -772,6 +859,8 @@ class PIRCHMainWindow(QMainWindow):
         chan_layout.addWidget(splitter)
         
         user_list.itemDoubleClicked.connect(self.on_user_double_clicked)
+        
+        user_list.itemClicked.connect(self.on_user_clicked_to_mention)
         
         self.tab_widget.addTab(chan_widget, channel)
         
@@ -929,7 +1018,7 @@ class PIRCHMainWindow(QMainWindow):
             self.update_status_bar_ui()
             # ส่งคำสั่ง QUIT ไปแจ้งเซิร์ฟเวอร์ก่อนปิด Socket
             try:
-                self.irc_worker.send_line("QUIT :Leaving with pyIRCH98")
+                self.irc_worker.send_line("QUIT :app.thaiirc.com - pyIRCH98")
             except Exception:
                 pass
             self.irc_worker.stop()
@@ -1269,21 +1358,19 @@ class PIRCHMainWindow(QMainWindow):
                 room["chat_display"].append(msg_html)
 
     def play_alert_sound(self):
-        """ เล่นเสียงเตือนคุณภาพสูง คมชัดขึ้นสำหรับ Windows 10 / 11 โดยไม่ทำให้โปรแกรมค้าง """
-        def run_sound():
+        """ ฟังก์ชันส่งเสียงเตือนระบบ Windows แท้ 100% (ห้ามใช้ระบบวนลูปความถี่สูงของ AI Studio) """
+        import threading
+        def sound_thread():
             try:
                 import winsound
-                # เล่นเสียงเตือนแบบไล่ระดับเสียง (Chirp) ความยาวสั้นๆ คมชัดและดังขึ้นกว่า Beep ธรรมดา
-                winsound.Beep(1800, 100)
-                winsound.Beep(2300, 120)
-            except Exception:
-                try:
-                    from PyQt6.QtWidgets import QApplication
-                    QApplication.beep()
-                except Exception:
-                    pass
-        import threading
-        threading.Thread(target=run_sound, daemon=True).start()
+                # เรียกเสียงติ๊งแจ้งเตือนมาตรฐานของระบบ Windows ยิงออกลำโพงหลักโดยตรง
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            except Exception as e:
+                print(f"Sound Error: {e}")
+
+        # สั่งรันแยกเธรดเบื้องหลัง เพื่อไม่ให้หน้าต่างแอปพลิเคชันกระตุกค้างขณะเสียงดัง
+        threading.Thread(target=sound_thread, daemon=True).start()
+
 
     def show_user_list_context_menu(self, pos, user_list_widget):
         """ แสดงเมนูคลิกขวาสำหรับสมาชิกในห้องแชท """
@@ -1783,29 +1870,45 @@ class PIRCHMainWindow(QMainWindow):
             self.append_system_msg(f"ระบบ: อัปโหลดไฟล์สำเร็จ! ลิงก์ตรงของคุณคือ: {direct_download_url}")
 
     def show_emoji_picker(self):
-        """ แสดงหน้าต่างเลือก Emoji UTF-8 ข้างบนปุ่ม Emoji """
+        """ แสดงหน้าต่างเลือก Emoji และแก้ไขบั๊กหน้าต่างลอยล้นออกนอกจอทางขวาเวลาเปิดเต็มหน้าจอ """
+        from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import Qt
+
         is_dark = (self.current_theme == "dark")
         picker = EmojiPicker(self, is_dark=is_dark)
         
-        # คำนวณตำแหน่งแสดงผลให้ลอยอยู่เหนือปุ่ม Emoji
+        # 1. คำนวณตำแหน่งแสดงผลให้ลอยอยู่เหนือปุ่ม Emoji ตามปกติ
         btn_pos = self.emoji_btn.mapToGlobal(self.emoji_btn.rect().topLeft())
         x = btn_pos.x() - (picker.width() - self.emoji_btn.width()) // 2
         y = btn_pos.y() - picker.height() - 5
         
-        # ป้องกันไม่ให้ออกนอกขอบจอซ้าย
+        # 2. ป้องกันไม่ให้ออกนอกขอบจอฝั่งซ้าย (ของเดิมที่มีอยู่แล้ว)
         if x < 10:
             x = 10
+
+        # 3. 🌟 [จุดแก้ไขเพิ่ม] ป้องกันไม่ให้หน้าต่างลอยล้นออกนอกขอบจอฝั่งขวา (โดยเฉพาะเวลาเปิดเต็มหน้าจอ)
+        # ดึงขนาดความกว้างทั้งหมดของหน้าจอคอมพิวเตอร์ปัจจุบันออกมาคำนวณ
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geometry = screen.geometry()
+            screen_width = screen_geometry.width()
             
+            # ถ้าพิกัด x + ความกว้างของกล่องอิโมจิ เกินความกว้างของหน้าจอ
+            if x + picker.width() > screen_width - 10:
+                # บังคับดันกล่องอิโมจิขยับกลับเข้ามาด้านซ้าย เพื่อให้ชิดขอบจอพอดี ไม่หลุดลอยหายไป
+                x = screen_width - picker.width() - 10
+
+        # 4. ย้ายหน้าต่างอิโมจิไปที่พิกัดใหม่ที่ปลอดภัย และสั่งเปิดทำงาน
         picker.move(x, y)
         if picker.exec():
             if picker.selected_emoji:
-                # แทรก emoji ลงไปในกล่องพิมพ์ ณ ตำแหน่งเคอร์เซอร์ปัจจุบัน
                 cursor_pos = self.message_input.cursorPosition()
                 current_text = self.message_input.text()
                 new_text = current_text[:cursor_pos] + picker.selected_emoji + current_text[cursor_pos:]
                 self.message_input.setText(new_text)
                 self.message_input.setFocus()
                 self.message_input.setCursorPosition(cursor_pos + len(picker.selected_emoji))
+
 
     def send_message(self):
         """ ส่งข้อความแชท หรือส่งคำสั่ง """
@@ -2540,6 +2643,41 @@ class PIRCHMainWindow(QMainWindow):
             if self.tab_widget.tabText(index).lower() == clean_target_nick.lower():
                 self.tab_widget.setCurrentIndex(index)
                 break
+
+    def on_user_clicked_to_mention(self, item):
+        """ เมื่อจิ้มเลือกชื่อเพื่อน ให้ดึงชื่อไปใส่เครื่องหมาย @ นำหน้าในช่องพิมพ์ข้อความด้านล่างทันที """
+        raw_nick = item.text().strip()
+        if not raw_nick:
+            return
+            
+        # ล้างสัญลักษณ์ยศนำหน้าชื่อ เช่น @ หรือ + ออกเพื่อให้ได้ชื่อเล่นที่ถูกต้องในการแทก
+        clean_target_nick = self.clean_nick(raw_nick)
+        
+        # 🌟 [จุดแก้ไขเพิ่ม] ดึงชื่อเล่นปัจจุบันที่เราใช้เชื่อมต่ออยู่ในกล่องข้อความขึ้นมาเช็ก
+        my_current_nick = self.nick_input.text().strip()
+        
+        # 🌟 ตรวจสอบว่าถ้าชื่อที่เราคลิก ดันตรงกับชื่อเล่นปัจจุบันของเราเอง ให้ยกเลิก (return) ปล่อยผ่านไปเลย
+        if clean_target_nick.lower() == my_current_nick.lower():
+            return
+        
+        # ดึงข้อความปัจจุบันที่พิมพ์ค้างอยู่ในช่องส่งข้อความขึ้นมาเช็ก
+        current_text = self.message_input.text().strip()
+        
+        # สร้างข้อความแทกในฟอร์แมตที่ต้องการ เช่น @Nickname 
+        mention_text = f"@{clean_target_nick} "
+        
+        # ตรรกะอัจฉริยะ: เช็กว่าถ้าในช่องพิมพ์ยังว่างอยู่ ให้ใส่ @Nickname นำหน้าสุดไปเลย
+        if not current_text:
+            self.message_input.setText(mention_text)
+        else:
+            # ถ้าผู้ใช้พิมพ์ข้อความค้างไว้แล้ว ให้เอาชื่อแทกไปพิมพ์ต่อท้ายข้อความเดิม โดยเว้นวรรคให้สวยงาม
+            if current_text.endswith(" "):
+                self.message_input.setText(self.message_input.text() + mention_text)
+            else:
+                self.message_input.setText(self.message_input.text() + " " + mention_text)
+                
+        # คืนค่า Focus ให้เคอร์เซอร์หนูเด้งกลับมาสแตนด์บายที่ช่องพิมพ์ข้อความโดยอัตโนมัติ ยูสเซอร์จะได้พิมพ์ข้อความต่อได้ทันที
+        self.message_input.setFocus()
 
 # =====================================================================
 # 3. จุดเริ่มต้นรันโปรแกรม (Entry Point)
