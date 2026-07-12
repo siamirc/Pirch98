@@ -30,10 +30,11 @@ class IRCWorker(QObject):
     message_received = pyqtSignal(str, str, str) # (channel/sender, nick, message)
     system_message = pyqtSignal(str)            # ข้อความระบบ/Log
     user_joined = pyqtSignal(str, str)           # (channel, nick)
-    user_left = pyqtSignal(str, str)             # (channel, nick)
+    user_left = pyqtSignal(str, str, str)         # (channel, nick, reason)
     user_kicked = pyqtSignal(str, str, str, str) # (channel, kicked_nick, kicker_nick, reason)
     user_list_received = pyqtSignal(str, list)   # (channel, list of nicks)
     mode_changed = pyqtSignal(str, str, str)     # (channel, sender_nick, mode_params)
+    channel_list_received = pyqtSignal(list)     # [(channel, user_count, topic), ...]
     error_occurred = pyqtSignal(str)
 
     def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="pyIRCH98 Client"):
@@ -43,6 +44,7 @@ class IRCWorker(QObject):
         self.nickname = nickname
         self.password = password
         self.use_ssl = use_ssl
+        self._temp_channel_list = []
         
         # Generates a random 10-char ident 'deskXXXXXX' where XXXXXX is random hex using '0-9' and 'a-f'
         if username is None:
@@ -192,9 +194,20 @@ class IRCWorker(QObject):
                 self.user_joined.emit(channel, sender_nick)
             elif command == "PART":
                 channel = target
-                self.user_left.emit(channel, sender_nick)
+                reason = ""
+                if params:
+                    reason = params.lstrip(":")
+                self.user_left.emit(channel, sender_nick, reason)
             elif command == "QUIT":
-                self.user_left.emit("ALL", sender_nick)
+                reason = ""
+                parts = line.split(" QUIT :", 1)
+                if len(parts) == 2:
+                    reason = parts[1]
+                else:
+                    parts = line.split(" QUIT ", 1)
+                    if len(parts) == 2:
+                        reason = parts[1].lstrip(":")
+                self.user_left.emit("ALL", sender_nick, reason)
             elif command == "KICK":
                 channel = target
                 parts = params.split(" ", 1)
@@ -221,6 +234,31 @@ class IRCWorker(QObject):
                         self.user_list_received.emit(channel, users)
                 except Exception:
                     pass
+            elif command == "322": # RPL_LIST
+                try:
+                    parts = line.split(" :", 1)
+                    topic = parts[1] if len(parts) == 2 else ""
+                    
+                    left_part = parts[0].strip()
+                    left_words = left_part.split(" ")
+                    if len(left_words) >= 2:
+                        num_users_str = left_words[-1]
+                        channel = left_words[-2]
+                        try:
+                            user_count = int(num_users_str)
+                        except ValueError:
+                            user_count = 0
+                            
+                        if not hasattr(self, "_temp_channel_list"):
+                            self._temp_channel_list = []
+                        self._temp_channel_list.append((channel, user_count, topic))
+                except Exception:
+                    pass
+            elif command == "323": # RPL_LISTEND
+                if not hasattr(self, "_temp_channel_list"):
+                    self._temp_channel_list = []
+                self.channel_list_received.emit(self._temp_channel_list)
+                self._temp_channel_list = []
             elif command in ["372", "375", "376"]: # ข้อความ MOTD (Message of the Day)
                 self.system_message.emit(f"[MOTD] {params}")
             else:
@@ -468,6 +506,213 @@ class EmojiPicker(QDialog):
         self.accept()
 
 
+# =====================================================================
+# 1.6. คลาสแสดงรายชื่อห้องสนทนาทั้งหมดบนเซิร์ฟเวอร์ (Channel List Dialog)
+# =====================================================================
+class ChannelListDialog(QDialog):
+    def __init__(self, parent=None, theme="light"):
+        super().__init__(parent)
+        self.theme = theme
+        self.setWindowTitle("รายชื่อช่องสนทนา (Channel List)")
+        self.resize(650, 480)
+        self.channels = [] # List of tuples/lists (channel_name, user_count, topic)
+        self.filtered_channels = []
+        
+        self.setup_ui()
+        self.apply_theme_style()
+        
+    def setup_ui(self):
+        from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
+        from PyQt6.QtCore import Qt
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        
+        # ค้นหา / คีย์เวิร์ด
+        search_layout = QHBoxLayout()
+        search_label = QLabel("ค้นหา:")
+        search_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("พิมพ์เพื่อค้นหาชื่อห้องหรือหัวข้อสนทนา...")
+        self.search_input.textChanged.connect(self.filter_channels)
+        
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.search_input)
+        layout.addLayout(search_layout)
+        
+        # ตารางรายชื่อช่อง
+        self.table = QTableWidget()
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["ชื่อช่อง (Channel)", "จำนวนผู้ใช้ (Users)", "หัวข้อสนทนา (Topic)"])
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        
+        # ปรับความกว้างคอลัมน์
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(0, 160)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(1, 120)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        
+        self.table.doubleClicked.connect(self.on_row_double_clicked)
+        
+        layout.addWidget(self.table)
+        
+        # แถบแจ้งสถานะการโหลดข้อมูล และปุ่มการทำงาน
+        bottom_layout = QHBoxLayout()
+        self.status_label = QLabel("กำลังรอรับรายชื่อช่องสนทนา...")
+        self.status_label.setStyleSheet("font-size: 12px; font-weight: 500;")
+        
+        self.refresh_btn = QPushButton("🔄 รีเฟรช")
+        self.refresh_btn.setFixedWidth(90)
+        self.refresh_btn.clicked.connect(self.request_refresh)
+        
+        self.join_btn = QPushButton("🚪 เข้าร่วมห้อง")
+        self.join_btn.setFixedWidth(110)
+        self.join_btn.clicked.connect(self.join_selected)
+        
+        self.close_btn = QPushButton("ปิด")
+        self.close_btn.setFixedWidth(80)
+        self.close_btn.clicked.connect(self.reject)
+        
+        bottom_layout.addWidget(self.status_label)
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(self.refresh_btn)
+        bottom_layout.addWidget(self.join_btn)
+        bottom_layout.addWidget(self.close_btn)
+        layout.addLayout(bottom_layout)
+        
+    def apply_theme_style(self):
+        is_dark = self.theme == "dark"
+        bg_color = "#0f172a" if is_dark else "#f8fafc"
+        text_color = "#cbd5e1" if is_dark else "#0f172a"
+        input_bg = "#1e293b" if is_dark else "#ffffff"
+        input_border = "#334155" if is_dark else "#cbd5e1"
+        header_bg = "#1e293b" if is_dark else "#e2e8f0"
+        header_text = "#94a3b8" if is_dark else "#475569"
+        grid_color = "#334155" if is_dark else "#cbd5e1"
+        item_selected_bg = "#312e81" if is_dark else "#bfdbfe"
+        
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {bg_color};
+                color: {text_color};
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
+            }}
+            QLabel {{
+                color: {text_color};
+                font-size: 12px;
+            }}
+            QLineEdit {{
+                background-color: {input_bg};
+                color: {text_color};
+                border: 1px solid {input_border};
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                height: 28px;
+            }}
+            QTableWidget {{
+                background-color: {input_bg};
+                color: {text_color};
+                gridline-color: {grid_color};
+                border: 1px solid {input_border};
+                border-radius: 6px;
+                font-size: 13px;
+            }}
+            QTableWidget::item:selected {{
+                background-color: {item_selected_bg};
+                color: {text_color};
+            }}
+            QHeaderView::section {{
+                background-color: {header_bg};
+                color: {header_text};
+                padding: 6px;
+                border: 1px solid {grid_color};
+                font-weight: bold;
+                font-size: 12px;
+            }}
+            QPushButton {{
+                background-color: {"#334155" if is_dark else "#e2e8f0"};
+                color: {text_color};
+                border: 1px solid {input_border};
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {"#475569" if is_dark else "#cbd5e1"};
+            }}
+            QPushButton:pressed {{
+                background-color: {"#1e293b" if is_dark else "#94a3b8"};
+            }}
+        """)
+        
+    def update_channels(self, channels):
+        self.channels = channels
+        self.filter_channels()
+        
+    def filter_channels(self):
+        from PyQt6.QtWidgets import QTableWidgetItem
+        from PyQt6.QtCore import Qt
+        search_text = self.search_input.text().strip().lower()
+        
+        self.table.setRowCount(0)
+        self.filtered_channels = []
+        
+        for chan, users, topic in self.channels:
+            if not search_text or search_text in chan.lower() or search_text in topic.lower():
+                self.filtered_channels.append((chan, users, topic))
+                
+        self.table.setRowCount(len(self.filtered_channels))
+        for row, (chan, users, topic) in enumerate(self.filtered_channels):
+            chan_item = QTableWidgetItem(chan)
+            users_item = QTableWidgetItem(str(users))
+            users_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            topic_item = QTableWidgetItem(topic)
+            
+            is_dark = self.theme == "dark"
+            chan_item.setForeground(QColor("#60a5fa" if is_dark else "#1d4ed8"))
+            chan_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            
+            users_item.setForeground(QColor("#34d399" if is_dark else "#059669"))
+            users_item.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            
+            self.table.setItem(row, 0, chan_item)
+            self.table.setItem(row, 1, users_item)
+            self.table.setItem(row, 2, topic_item)
+            
+        self.status_label.setText(f"พบทั้งหมด {len(self.filtered_channels)} ช่อง (จาก {len(self.channels)} ช่อง)")
+        
+    def on_row_double_clicked(self, index):
+        self.accept()
+        
+    def get_selected_channel(self):
+        selected_row = self.table.currentRow()
+        if 0 <= selected_row < len(self.filtered_channels):
+            return self.filtered_channels[selected_row][0]
+        return None
+        
+    def join_selected(self):
+        if self.get_selected_channel():
+            self.accept()
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "ยังไม่ได้เลือก", "กรุณาเลือกช่องสนทนาที่ต้องการเข้าร่วมจากรายการ!")
+            
+    def request_refresh(self):
+        if hasattr(self.parent(), "irc_worker") and self.parent().irc_worker:
+            self.parent().irc_worker.send_line("LIST")
+            self.status_label.setText("กำลังส่งคำสั่งขอรายชื่อช่องสนทนา...")
+            self.table.setRowCount(0)
+            self.channels = []
+            self.filtered_channels = []
+
 
 # =====================================================================
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
@@ -671,6 +916,13 @@ class PIRCHMainWindow(QMainWindow):
         """)        
         self.channel_input.setToolTip("ระบุห้องแชทที่จะเข้าร่วม (เช่น #thaiirc)")
         radio_layout.addWidget(self.channel_input)
+
+        # ปุ่มดูรายชื่อช่อง (List Channels Button)
+        self.list_btn = QPushButton("🌐 List")
+        self.list_btn.setFixedWidth(60)
+        self.list_btn.setToolTip("ดูรายชื่อช่องสนทนาทั้งหมดบนเซิร์ฟเวอร์")
+        self.list_btn.clicked.connect(self.request_channel_list)
+        radio_layout.addWidget(self.list_btn)
 
         radio_layout.addWidget(QLabel("Pass:"))
         self.password_input = QLineEdit()
@@ -932,6 +1184,35 @@ class PIRCHMainWindow(QMainWindow):
             if self.port_input.text().strip() == "6697":
                 self.port_input.setText("6667")
 
+    def request_channel_list(self):
+        """ แสดงรายชื่อช่องสนทนาทั้งหมดจากเซิร์ฟเวอร์ด้วยหน้าต่าง ChannelListDialog """
+        if not (self.irc_thread and self.irc_thread.isRunning() and self.irc_worker):
+            QMessageBox.warning(self, "ยังไม่ได้เชื่อมต่อ", "กรุณาเชื่อมต่อ IRC Server ก่อนเรียกดูรายชื่อห้องสนทนา!")
+            return
+        
+        dialog = ChannelListDialog(self, theme=self.current_theme)
+        
+        # เชื่อมต่อสัญญาณรับข้อมูลจากเซิร์ฟเวอร์
+        self.irc_worker.channel_list_received.connect(dialog.update_channels)
+        
+        # ส่งคำสั่งขอรายชื่อช่องสนทนา
+        self.irc_worker.send_line("LIST")
+        dialog.status_label.setText("กำลังส่งคำสั่งขอรายชื่อช่องสนทนา...")
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            selected_chan = dialog.get_selected_channel()
+            if selected_chan:
+                # อัปเดตช่อง Join
+                self.channel_input.setText(selected_chan)
+                # เข้าร่วมห้องนั้น
+                self.irc_worker.send_line(f"JOIN {selected_chan}")
+                
+        # ตัดสัญญาณเชื่อมต่อเพื่อป้องกันการซ้อนทับ/หน่วยความจำรั่วไหล
+        try:
+            self.irc_worker.channel_list_received.disconnect(dialog.update_channels)
+        except Exception:
+            pass
+
     def toggle_connection(self):
         """ ฟังก์ชันสลับสถานะเชื่อมต่อ/ตัดการเชื่อมต่อ """
         if self.irc_thread and self.irc_thread.isRunning():
@@ -1068,6 +1349,22 @@ class PIRCHMainWindow(QMainWindow):
         self.server_input.setEnabled(True)
         self.port_input.setEnabled(True)
         self.nick_input.setEnabled(True)
+        
+        # เพิ่มข้อความระบบตัดการเชื่อมต่อลงในสถานะ Status Display แบบหรูหรา Professional
+        current_time = datetime.now().strftime("%H:%M")
+        is_dark = self.current_theme == "dark"
+        time_color = "#94a3b8" if is_dark else "#64748b"
+        icon_color = "#ef4444" if is_dark else "#dc2626"
+        text_color = "#f87171" if is_dark else "#dc2626"
+        
+        msg_html = (
+            f"<div style='margin-left: 12px; margin-top: 6px; margin-bottom: 6px; padding: 6px; border-left: 3px solid {icon_color}; background-color: {'#1e293b' if is_dark else '#f8fafc'}; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+            f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+            f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>⚠️</span>"
+            f"<span style='color: {text_color}; font-weight: bold;'>ตัดการเชื่อมต่อออกจากเซิร์ฟเวอร์ (Connection Lost / Offline)</span>"
+            f"</div>"
+        )
+        self.status_display.append(msg_html)
         
         # ลบห้องสนทนาทั้งหมดออก
         for chan_key in list(self.rooms.keys()):
@@ -1544,30 +1841,54 @@ class PIRCHMainWindow(QMainWindow):
         room = self.get_or_create_channel_tab(channel)
         
         current_time = datetime.now().strftime("%H:%M")
-        time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
-        text_color = "#059669" if self.current_theme == "light" else "#10b981"
+        is_dark = self.current_theme == "dark"
         
-        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color}; font-weight: bold;'>✔ {nick} ได้เข้าสู่ห้อง {channel}</span></div>"
+        time_color = "#94a3b8" if is_dark else "#64748b"
+        icon_color = "#10b981" if is_dark else "#059669"
+        nick_color = "#f1f5f9" if is_dark else "#0f172a"
+        text_color = "#94a3b8" if is_dark else "#475569"
+        
+        msg_html = (
+            f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+            f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+            f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>➔</span>"
+            f"<span style='color: {nick_color}; font-weight: 600;'>{nick}</span> "
+            f"<span style='color: {text_color};'>ได้เข้าร่วมห้องสนทนา ({channel})</span>"
+            f"</div>"
+        )
         room["chat_display"].append(msg_html)
         
         if nick == self.nick_input.text().strip():
             self.current_channel = channel
             
-        # เพิ่มเข้าสู่ผู้ใช้งานของระบบแชทแบบเรียลไทม์ทันที
-        #self.add_user_to_list(channel, nick)
         self.add_user_to_list(channel, nick)
 
-    def on_user_left(self, channel, nick):
+    def on_user_left(self, channel, nick, reason=""):
         """ มีคนออกจากห้องแชท หรือออกจากระบบ """
+        is_dark = self.current_theme == "dark"
+        current_time = datetime.now().strftime("%H:%M")
+        time_color = "#94a3b8" if is_dark else "#64748b"
+        
         if channel != "ALL":
             chan_key = channel.lower()
             if chan_key in self.rooms:
                 room = self.rooms[chan_key]
-                current_time = datetime.now().strftime("%H:%M")
-                time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
-                text_color = "#94a3b8" if self.current_theme == "light" else "#64748b"
                 
-                msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color};'>🚪 {nick} ได้ออกจากห้อง {channel}</span></div>"
+                icon_color = "#f59e0b" if is_dark else "#d97706"
+                nick_color = "#f1f5f9" if is_dark else "#0f172a"
+                text_color = "#94a3b8" if is_dark else "#475569"
+                reason_color = "#64748b" if is_dark else "#94a3b8"
+                
+                reason_str = f" <span style='color: {reason_color}; font-style: italic;'>({reason})</span>" if reason else ""
+                
+                msg_html = (
+                    f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+                    f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+                    f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>←</span>"
+                    f"<span style='color: {nick_color}; font-weight: 600;'>{nick}</span> "
+                    f"<span style='color: {text_color};'>ได้ออกจากห้องสนทนา</span>{reason_str}"
+                    f"</div>"
+                )
                 room["chat_display"].append(msg_html)
                 
                 # หากตัวเราออกจากช่องเอง ให้ทำการปิดแท็บ
@@ -1578,7 +1899,27 @@ class PIRCHMainWindow(QMainWindow):
                 else:
                     self.remove_user_from_list(channel, nick)
         else:
-            # กรณีหลุดออกจากระบบทั้งหมด ให้ลบผู้ใช้รายนี้ออกจากทุกห้องแชททันที
+            # กรณีหลุดออกจากระบบทั้งหมด (QUIT) ให้แสดงข้อความในทุกห้องแชทที่ผู้ใช้นี้อยู่ ณ ขณะนั้น
+            clean_target_nick = self.clean_nick(nick)
+            icon_color = "#ef4444" if is_dark else "#dc2626"
+            nick_color = "#f1f5f9" if is_dark else "#0f172a"
+            text_color = "#94a3b8" if is_dark else "#475569"
+            reason_color = "#64748b" if is_dark else "#94a3b8"
+            
+            reason_str = f" <span style='color: {reason_color}; font-style: italic;'>({reason})</span>" if reason else ""
+            
+            for chan_key, room in list(self.rooms.items()):
+                if any(self.clean_nick(u).lower() == clean_target_nick.lower() for u in room.get("users", [])):
+                    msg_html = (
+                        f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+                        f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+                        f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>❌</span>"
+                        f"<span style='color: {nick_color}; font-weight: 600;'>{nick}</span> "
+                        f"<span style='color: {text_color};'>ได้ออกจากเซิร์ฟเวอร์ (Quit)</span>{reason_str}"
+                        f"</div>"
+                    )
+                    room["chat_display"].append(msg_html)
+                    
             self.remove_user_from_all_lists(nick)
 
     def on_user_kicked(self, channel, kicked_nick, kicker_nick, reason):
@@ -1587,10 +1928,25 @@ class PIRCHMainWindow(QMainWindow):
         if chan_key in self.rooms:
             room = self.rooms[chan_key]
             current_time = datetime.now().strftime("%H:%M")
-            time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
-            text_color = "#ef4444" if self.current_theme == "light" else "#f87171"
+            is_dark = self.current_theme == "dark"
             
-            msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color}; font-weight: bold;'>❌ {kicked_nick} ถูกเตะออกจากห้อง {channel} โดย {kicker_nick} ({reason})</span></div>"
+            time_color = "#94a3b8" if is_dark else "#64748b"
+            icon_color = "#ef4444" if is_dark else "#b91c1c"
+            nick_color = "#fca5a5" if is_dark else "#7f1d1d"
+            text_color = "#cbd5e1" if is_dark else "#475569"
+            kicker_color = "#f1f5f9" if is_dark else "#0f172a"
+            reason_color = "#f87171" if is_dark else "#ef4444"
+            
+            msg_html = (
+                f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+                f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+                f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>🚷</span>"
+                f"<span style='color: {nick_color}; font-weight: bold;'>{kicked_nick}</span> "
+                f"<span style='color: {text_color};'>ถูกเตะออกจากห้องโดย</span> "
+                f"<span style='color: {kicker_color}; font-weight: 600;'>{kicker_nick}</span> "
+                f"<span style='color: {reason_color}; font-style: italic;'>({reason})</span>"
+                f"</div>"
+            )
             room["chat_display"].append(msg_html)
             
             # หากเป็นตัวเราเองโดนเตะ ให้ปิดแท็บห้องแชทนั้น
@@ -1618,6 +1974,33 @@ class PIRCHMainWindow(QMainWindow):
         mode_flag = parts[0]
         target_nick = parts[1]
         
+        is_dark = self.current_theme == "dark"
+        current_time = datetime.now().strftime("%H:%M")
+        time_color = "#94a3b8" if is_dark else "#64748b"
+        
+        # ดักจับโหมดแบน/ปลดแบนเป็นพิเศษเพื่อดีไซน์ข้อความให้หรูหรา Professional
+        if mode_flag in ["+b", "-b"]:
+            is_ban = mode_flag == "+b"
+            icon = "🚫" if is_ban else "🔓"
+            action_text = "โดนแบนในห้อง" if is_ban else "ได้รับการปลดแบนในห้อง"
+            icon_color = "#ef4444" if is_ban else "#10b981"
+            target_color = "#f87171" if is_ban else "#34d399"
+            text_color = "#cbd5e1" if is_dark else "#475569"
+            sender_color = "#f1f5f9" if is_dark else "#0f172a"
+            
+            room = self.rooms[chan_key]
+            msg_html = (
+                f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+                f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+                f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>{icon}</span>"
+                f"<span style='color: {target_color}; font-weight: bold;'>{target_nick}</span> "
+                f"<span style='color: {text_color};'>{action_text} {channel} โดย</span> "
+                f"<span style='color: {sender_color}; font-weight: 600;'>{sender_nick}</span>"
+                f"</div>"
+            )
+            room["chat_display"].append(msg_html)
+            return
+            
         # คลีนชื่อเล่นเพื่อหาตัวตนที่ถูกต้อง
         clean_target = self.clean_nick(target_nick)
         
@@ -1664,10 +2047,23 @@ class PIRCHMainWindow(QMainWindow):
         
         # แสดงข้อความแจ้งเตือนระบบในแชทให้ผู้ใช้เห็นความเคลื่อนไหวเรียลไทม์
         current_time = datetime.now().strftime("%H:%M")
-        time_color = "#64748b" if self.current_theme == "light" else "#94a3b8"
-        text_color = "#2563eb" if self.current_theme == "light" else "#60a5fa"
+        is_dark = self.current_theme == "dark"
+        time_color = "#94a3b8" if is_dark else "#64748b"
+        icon_color = "#3b82f6" if is_dark else "#2563eb"
+        text_color = "#cbd5e1" if is_dark else "#475569"
+        target_color = "#60a5fa" if is_dark else "#1d4ed8"
+        sender_color = "#f1f5f9" if is_dark else "#0f172a"
         
-        msg_html = f"<div style='margin-left: 12px; margin-top: 2px; margin-bottom: 2px;'><span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 6px;'>({current_time})</span> <span style='color: {text_color}; font-weight: bold;'>⚙ * {sender_nick} ตั้งโหมด {mode_flag} ให้กับ {clean_target} ในห้อง {channel}</span></div>"
+        msg_html = (
+            f"<div style='margin-left: 12px; margin-top: 3px; margin-bottom: 3px; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; font-size: 13px;'>"
+            f"<span style='color: {time_color}; font-family: monospace; font-size: 11px; margin-right: 8px;'>[{current_time}]</span>"
+            f"<span style='color: {icon_color}; font-weight: bold; margin-right: 6px;'>⚙</span>"
+            f"<span style='color: {sender_color}; font-weight: 600;'>{sender_nick}</span> "
+            f"<span style='color: {text_color};'>ตั้งโหมด {mode_flag} ให้กับ</span> "
+            f"<span style='color: {target_color}; font-weight: bold;'>{clean_target}</span> "
+            f"<span style='color: {text_color};'>ในห้อง {channel}</span>"
+            f"</div>"
+        )
         room["chat_display"].append(msg_html)
 
     def on_user_list(self, channel, users):
