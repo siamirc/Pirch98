@@ -1099,11 +1099,102 @@ class PIRCHMainWindow(QMainWindow):
         chat_display.setOpenExternalLinks(True)
         splitter.addWidget(chat_display)
         
+        # สร้างคอนเทนเนอร์ฝั่งขวาสำหรับแสดงรายชื่อผู้ใช้และแถบคำสั่งด่วนสำหรับผู้ควบคุมห้อง (Operator Actions)
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(6)
+        
         user_list = QListWidget()
         user_list.setObjectName("UserList")
         user_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         user_list.customContextMenuRequested.connect(lambda pos, ul=user_list: self.show_user_list_context_menu(pos, ul))
-        splitter.addWidget(user_list)
+        right_layout.addWidget(user_list)
+        
+        # เพิ่ม Operator Action Panel ด้านล่างของ lists user
+        op_panel = QFrame()
+        op_panel.setObjectName("OpPanel")
+        op_panel.setFrameShape(QFrame.Shape.StyledPanel)
+        
+        # ค้นหาว่าปัจจุบันเป็น dark หรือ light เพื่อปรับแต่งสีของกรอบแผงควบคุมผู้ควบคุมห้อง
+        is_dark = self.current_theme == "dark"
+        border_color = "#334155" if is_dark else "#cbd5e1"
+        bg_color = "#1e293b" if is_dark else "#f1f5f9"
+        text_color = "#cbd5e1" if is_dark else "#475569"
+        
+        op_panel.setStyleSheet(f"""
+            #OpPanel {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 6px;
+            }}
+            QLabel {{
+                color: {text_color};
+                font-weight: bold;
+                font-size: 11px;
+            }}
+        """)
+        
+        op_layout = QVBoxLayout(op_panel)
+        op_layout.setContentsMargins(4, 4, 4, 4)
+        op_layout.setSpacing(4)
+        
+        op_title = QLabel("⚙️ ผู้ควบคุมห้อง (Operator)")
+        op_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        op_layout.addWidget(op_title)
+        
+        # แบ่งปุ่มเป็น 2 แถว แถวละ 3 ปุ่มเพื่อให้กระชับและไม่เปลืองพื้นที่
+        row1_layout = QHBoxLayout()
+        row1_layout.setSpacing(4)
+        
+        op_btn = QPushButton("+Op")
+        op_btn.setToolTip("แต่งตั้งผู้ใช้งานเป็นผู้ควบคุมห้อง (Operator)")
+        op_btn.setFixedHeight(24)
+        op_btn.clicked.connect(lambda checked, ch=channel, ul=user_list: self.run_operator_command("OP", ch, ul))
+        
+        deop_btn = QPushButton("-Op")
+        deop_btn.setToolTip("ยกเลิกสิทธิ์ผู้ควบคุมห้อง")
+        deop_btn.setFixedHeight(24)
+        deop_btn.clicked.connect(lambda checked, ch=channel, ul=user_list: self.run_operator_command("DEOP", ch, ul))
+        
+        voice_btn = QPushButton("+Voice")
+        voice_btn.setToolTip("มอบสิทธิ์การพูดพิเศษ (+v)")
+        voice_btn.setFixedHeight(24)
+        voice_btn.clicked.connect(lambda checked, ch=channel, ul=user_list: self.run_operator_command("VOICE", ch, ul))
+        
+        row1_layout.addWidget(op_btn)
+        row1_layout.addWidget(deop_btn)
+        row1_layout.addWidget(voice_btn)
+        op_layout.addLayout(row1_layout)
+        
+        row2_layout = QHBoxLayout()
+        row2_layout.setSpacing(4)
+        
+        devoice_btn = QPushButton("-Voice")
+        devoice_btn.setToolTip("ยกเลิกสิทธิ์การพูดพิเศษ (-v)")
+        devoice_btn.setFixedHeight(24)
+        devoice_btn.clicked.connect(lambda checked, ch=channel, ul=user_list: self.run_operator_command("DEVOICE", ch, ul))
+        
+        kick_btn = QPushButton("Kick")
+        kick_btn.setToolTip("เตะผู้ใช้งานออกจากห้องแชท")
+        kick_btn.setFixedHeight(24)
+        kick_btn.setStyleSheet("background-color: #ef4444; color: white;")
+        kick_btn.clicked.connect(lambda checked, ch=channel, ul=user_list: self.run_operator_command("KICK", ch, ul))
+        
+        ban_btn = QPushButton("Ban")
+        ban_btn.setToolTip("แบนผู้ใช้งานจากห้องแชท")
+        ban_btn.setFixedHeight(24)
+        ban_btn.setStyleSheet("background-color: #dc2626; color: white;")
+        ban_btn.clicked.connect(lambda checked, ch=channel, ul=user_list: self.run_operator_command("BAN", ch, ul))
+        
+        row2_layout.addWidget(devoice_btn)
+        row2_layout.addWidget(kick_btn)
+        row2_layout.addWidget(ban_btn)
+        op_layout.addLayout(row2_layout)
+        
+        right_layout.addWidget(op_panel)
+        splitter.addWidget(right_container)
         
         splitter.setSizes([640, 160])
         splitter.setStretchFactor(0, 80)
@@ -1212,6 +1303,39 @@ class PIRCHMainWindow(QMainWindow):
             self.irc_worker.channel_list_received.disconnect(dialog.update_channels)
         except Exception:
             pass
+
+    def run_operator_command(self, cmd_type, channel, user_list_widget):
+        """ ฟังก์ชันรันคำสั่งสำหรับผู้ควบคุมห้องแชทโดยอิงจากผู้ใช้ที่เลือก """
+        if not (self.irc_thread and self.irc_thread.isRunning() and self.irc_worker):
+            QMessageBox.warning(self, "ยังไม่ได้เชื่อมต่อ", "กรุณาเชื่อมต่อ IRC Server ก่อนใช้งานคำสั่งผู้ควบคุมห้อง!")
+            return
+            
+        selected_item = user_list_widget.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "ยังไม่ได้เลือกผู้ใช้", "กรุณาเลือกผู้ใช้งานในห้องที่ต้องการจัดการก่อนคลิกปุ่ม!")
+            return
+            
+        raw_nick = selected_item.text().strip()
+        clean_nick = self.clean_nick(raw_nick)
+        
+        if cmd_type == "OP":
+            self.irc_worker.send_line(f"MODE {channel} +o {clean_nick}")
+        elif cmd_type == "DEOP":
+            self.irc_worker.send_line(f"MODE {channel} -o {clean_nick}")
+        elif cmd_type == "VOICE":
+            self.irc_worker.send_line(f"MODE {channel} +v {clean_nick}")
+        elif cmd_type == "DEVOICE":
+            self.irc_worker.send_line(f"MODE {channel} -v {clean_nick}")
+        elif cmd_type == "KICK":
+            from PyQt6.QtWidgets import QInputDialog
+            reason, ok = QInputDialog.getText(self, "เตะผู้ใช้งาน (KICK)", f"ระบุเหตุผลในการเตะ {clean_nick}:", text="Kicked by operator")
+            if ok:
+                # ถ้าเหตุผลว่าง ให้เว้นหรือใช้ default
+                reason_str = reason.strip() if reason.strip() else "Kicked by operator"
+                self.irc_worker.send_line(f"KICK {channel} {clean_nick} :{reason_str}")
+        elif cmd_type == "BAN":
+            # แบนผู้ใช้ (+b nick)
+            self.irc_worker.send_line(f"MODE {channel} +b {clean_nick}")
 
     def toggle_connection(self):
         """ ฟังก์ชันสลับสถานะเชื่อมต่อ/ตัดการเชื่อมต่อ """
@@ -2778,6 +2902,14 @@ class PIRCHMainWindow(QMainWindow):
                     color: #cbd5e1;
                     padding: 6px;
                 }
+                #OpPanel {
+                    background-color: #1e293b;
+                    border: 1px solid #334155;
+                    border-radius: 12px;
+                }
+                #OpPanel QLabel {
+                    color: #94a3b8;
+                }
                 QListWidget::item {
                     padding: 5px 8px;
                     border-radius: 6px;
@@ -2945,6 +3077,14 @@ class PIRCHMainWindow(QMainWindow):
                     font-family: 'Segoe UI', 'Inter', 'Arial';
                     color: #334155;
                     padding: 6px;
+                }
+                #OpPanel {
+                    background-color: #f1f5f9;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 12px;
+                }
+                #OpPanel QLabel {
+                    color: #475569;
                 }
                 QListWidget::item {
                     padding: 5px 8px;
