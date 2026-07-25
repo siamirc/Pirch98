@@ -10,13 +10,21 @@ from PyQt6.QtWidgets import (
     QListWidget, QStatusBar, QMessageBox, QFrame, QTabWidget, QSlider, QCheckBox,
     QMenu, QDialog, QScrollArea, QGridLayout
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer
+from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer, pyqtSlot, QMetaObject, Q_ARG, QUrl
 from PyQt6.QtGui import QFont, QColor, QPainter, QBrush
 import sys
 import socket
 from datetime import datetime
-# 🌟 เพิ่มบรรทัดนี้เข้าไปด้านบนสุดของไฟล์ครับ
-import winsound  
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
+try:
+    from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+    HAS_QT_MULTIMEDIA = True
+except ImportError:
+    HAS_QT_MULTIMEDIA = False
 
 # =====================================================================
 # 1. คลาส IRCWorker สำหรับจัดการเชื่อมต่อและรับส่งข้อมูลผ่าน TCP Socket
@@ -37,13 +45,14 @@ class IRCWorker(QObject):
     channel_list_received = pyqtSignal(list)     # [(channel, user_count, topic), ...]
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="pyIRCH98 Client"):
+    def __init__(self, server, port, nickname, username=None, password=None, use_ssl=False, realname="pyIRCH98 Client", is_znc=False):
         super().__init__()
         self.server = server
         self.port = port
         self.nickname = nickname
         self.password = password
         self.use_ssl = use_ssl
+        self.is_znc = is_znc
         self._temp_channel_list = []
         
         # Generates a random 10-char ident 'deskXXXXXX' where XXXXXX is random hex using '0-9' and 'a-f'
@@ -97,8 +106,14 @@ class IRCWorker(QObject):
             self.connected.emit()
             self.system_message.emit("เชื่อมต่อสำเร็จ! กำลังส่งสัญญาณระบุตัวตน (NICK & USER)...")
             
-            # ถ้ามีรหัสผ่าน ให้เริ่มขอสัญญาณระบุตัวตนผ่าน SASL
+            # ส่งรหัสผ่าน PASS สำหรับ ZNC Bouncer หรือ Server Password
             if self.password:
+                pass_log = re.sub(r'(:[^:]+)$', r':****', self.password) if ':' in self.password else '****'
+                self.system_message.emit(f"-> PASS {pass_log}")
+                self.send_line(f"PASS {self.password}")
+
+            # ถ้ามีรหัสผ่านและไม่ใช่ ZNC ให้เริ่มขอสัญญาณระบุตัวตนผ่าน SASL
+            if self.password and not getattr(self, 'is_znc', False):
                 self.send_line("CAP REQ :sasl")
             
             # ส่งข้อมูลลงทะเบียน IRC Protocol
@@ -715,6 +730,201 @@ class ChannelListDialog(QDialog):
 
 
 # =====================================================================
+# 1.7. คลาสหน้าต่างจัดการ ZNC IRC Bouncer (ZNC Dialog)
+# =====================================================================
+class ZNCDialog(QDialog):
+    def __init__(self, parent=None, theme="light", znc_config=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.setWindowTitle("⚡ ตั้งค่าและควบคุม ZNC IRC Bouncer")
+        self.resize(520, 460)
+        self.znc_config = znc_config or {}
+        
+        self.setup_ui()
+        self.apply_theme_style()
+        
+    def setup_ui(self):
+        from PyQt6.QtWidgets import (
+            QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel,
+            QGroupBox, QCheckBox, QGridLayout
+        )
+        from PyQt6.QtCore import Qt
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+        
+        # หัวข้อหลัก
+        header = QLabel("⚡ ระบบจัดการ ZNC IRC Bouncer")
+        header.setStyleSheet("font-weight: bold; font-size: 16px; color: #6366f1;")
+        layout.addWidget(header)
+        
+        desc = QLabel("ZNC ช่วยรักษาสถานะออนไลน์บน IRC ตลอด 24 ชม. และเก็บบันทึกประวัติข้อความย้อนหลัง")
+        desc.setWordWrap(True)
+        desc.setStyleSheet("font-size: 12px; color: #64748b;")
+        layout.addWidget(desc)
+        
+        # กลุ่มการตั้งค่าการเชื่อมต่อ ZNC
+        group = QGroupBox("การเชื่อมต่อ ZNC Bouncer")
+        group_layout = QGridLayout(group)
+        group_layout.setSpacing(8)
+        
+        self.enable_checkbox = QCheckBox("เปิดใช้งาน ZNC Bouncer")
+        self.enable_checkbox.setChecked(self.znc_config.get("enabled", False))
+        group_layout.addWidget(self.enable_checkbox, 0, 0, 1, 2)
+        
+        group_layout.addWidget(QLabel("ZNC Host/Server:"), 1, 0)
+        self.host_input = QLineEdit(self.znc_config.get("host", ""))
+        self.host_input.setPlaceholderText("เช่น znc.thaiirc.com หรือ IP")
+        group_layout.addWidget(self.host_input, 1, 1)
+        
+        group_layout.addWidget(QLabel("ZNC Port:"), 2, 0)
+        self.port_input = QLineEdit(self.znc_config.get("port", "6697"))
+        group_layout.addWidget(self.port_input, 2, 1)
+        
+        group_layout.addWidget(QLabel("ZNC Username:"), 3, 0)
+        self.user_input = QLineEdit(self.znc_config.get("username", ""))
+        self.user_input.setPlaceholderText("ชื่อผู้ใช้บนระบบ ZNC")
+        group_layout.addWidget(self.user_input, 3, 1)
+        
+        group_layout.addWidget(QLabel("ZNC Network:"), 4, 0)
+        self.net_input = QLineEdit(self.znc_config.get("network", "thaiirc"))
+        self.net_input.setPlaceholderText("ชื่อเครือข่าย เช่น thaiirc, freenode")
+        group_layout.addWidget(self.net_input, 4, 1)
+        
+        group_layout.addWidget(QLabel("ZNC Password:"), 5, 0)
+        self.pass_input = QLineEdit(self.znc_config.get("password", ""))
+        self.pass_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pass_input.setPlaceholderText("รหัสผ่าน ZNC")
+        group_layout.addWidget(self.pass_input, 5, 1)
+        
+        layout.addWidget(group)
+        
+        # กลุ่มคำสั่งด่วน ZNC (เมื่อเชื่อมต่ออยู่)
+        cmd_group = QGroupBox("คำสั่งด่วน ZNC (Quick Commands)")
+        cmd_layout = QGridLayout(cmd_group)
+        cmd_layout.setSpacing(6)
+        
+        btn_listchans = QPushButton("📋 รายชื่อห้อง (/znc listchans)")
+        btn_listchans.clicked.connect(lambda: self.send_znc_cmd("listchans"))
+        
+        btn_listnets = QPushButton("🌐 รายชื่อเครือข่าย (/znc listnets)")
+        btn_listnets.clicked.connect(lambda: self.send_znc_cmd("listnets"))
+        
+        btn_detach = QPushButton("📤 ถอนห้องแชท (/detach)")
+        btn_detach.clicked.connect(lambda: self.send_znc_cmd("detach"))
+        
+        btn_save = QPushButton("💾 บันทึกค่า (/znc saveconfig)")
+        btn_save.clicked.connect(lambda: self.send_znc_cmd("saveconfig"))
+        
+        btn_play = QPushButton("🔄 ดึงประวัติย้อนหลัง (/znc playbuffer)")
+        btn_play.clicked.connect(lambda: self.send_znc_cmd("playbuffer"))
+        
+        btn_help = QPushButton("❓ ช่วยเหลือ (/znc help)")
+        btn_help.clicked.connect(lambda: self.send_znc_cmd("help"))
+        
+        cmd_layout.addWidget(btn_listchans, 0, 0)
+        cmd_layout.addWidget(btn_listnets, 0, 1)
+        cmd_layout.addWidget(btn_detach, 1, 0)
+        cmd_layout.addWidget(btn_save, 1, 1)
+        cmd_layout.addWidget(btn_play, 2, 0)
+        cmd_layout.addWidget(btn_help, 2, 1)
+        
+        layout.addWidget(cmd_group)
+        
+        # ปุ่มกดตกลง / ยกเลิก
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+        
+        self.save_btn = QPushButton("💾 บันทึกการตั้งค่า")
+        self.save_btn.setStyleSheet("background-color: #6366f1; color: white; font-weight: bold; padding: 6px 14px;")
+        self.save_btn.clicked.connect(self.save_and_accept)
+        
+        self.close_btn = QPushButton("ปิด")
+        self.close_btn.clicked.connect(self.reject)
+        
+        btn_box.addWidget(self.save_btn)
+        btn_box.addWidget(self.close_btn)
+        layout.addLayout(btn_box)
+
+    def send_znc_cmd(self, cmd):
+        parent = self.parent()
+        if hasattr(parent, "irc_worker") and parent.irc_worker:
+            if cmd == "detach" and hasattr(parent, "current_channel") and parent.current_channel:
+                parent.irc_worker.send_line(f"PRIVMSG *status :detach {parent.current_channel}")
+                parent.append_system_msg(f"-> ZNC: detach {parent.current_channel}")
+            elif cmd == "playbuffer" and hasattr(parent, "current_channel") and parent.current_channel:
+                parent.irc_worker.send_line(f"PRIVMSG *status :playbuffer {parent.current_channel}")
+                parent.append_system_msg(f"-> ZNC: playbuffer {parent.current_channel}")
+            else:
+                parent.irc_worker.send_line(f"PRIVMSG *status :{cmd}")
+                parent.append_system_msg(f"-> ZNC: {cmd}")
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "ยังไม่ได้เชื่อมต่อ", "กรุณาเชื่อมต่อ IRC/ZNC Server ก่อนส่งคำสั่ง!")
+
+    def save_and_accept(self):
+        self.znc_config["enabled"] = self.enable_checkbox.isChecked()
+        self.znc_config["host"] = self.host_input.text().strip()
+        self.znc_config["port"] = self.port_input.text().strip()
+        self.znc_config["username"] = self.user_input.text().strip()
+        self.znc_config["network"] = self.net_input.text().strip()
+        self.znc_config["password"] = self.pass_input.text().strip()
+        self.accept()
+
+    def get_config(self):
+        return self.znc_config
+
+    def apply_theme_style(self):
+        is_dark = self.theme == "dark"
+        bg_color = "#1e293b" if is_dark else "#ffffff"
+        text_color = "#f1f5f9" if is_dark else "#1e293b"
+        border_color = "#475569" if is_dark else "#cbd5e1"
+        input_bg = "#0f172a" if is_dark else "#f8fafc"
+        
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {bg_color};
+                color: {text_color};
+            }}
+            QGroupBox {{
+                color: {text_color};
+                font-weight: bold;
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                margin-top: 8px;
+                padding-top: 10px;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+            }}
+            QLabel {{
+                color: {text_color};
+            }}
+            QLineEdit {{
+                background-color: {input_bg};
+                color: {text_color};
+                border: 1px solid {border_color};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QPushButton {{
+                background-color: {"#334155" if is_dark else "#e2e8f0"};
+                color: {text_color};
+                border: 1px solid {border_color};
+                border-radius: 4px;
+                padding: 5px 10px;
+            }}
+            QPushButton:hover {{
+                background-color: #6366f1;
+                color: white;
+            }}
+        """)
+
+
+# =====================================================================
 # 2. คลาสหลัก GUI Window หน้าตาคล้ายโปรแกรม pIRCH (สไตล์ Windows 95)
 # =====================================================================
 class PIRCHMainWindow(QMainWindow):
@@ -753,14 +963,31 @@ class PIRCHMainWindow(QMainWindow):
             
         self.player = None
         self.audio_output = None
+        self.alert_player = None
+        self.alert_audio_output = None
         if self.has_multimedia:
             try:
                 self.player = QMediaPlayer()
                 self.audio_output = QAudioOutput()
                 self.player.setAudioOutput(self.audio_output)
                 self.audio_output.setVolume(0.5)
+
+                self.alert_player = QMediaPlayer()
+                self.alert_audio_output = QAudioOutput()
+                self.alert_player.setAudioOutput(self.alert_audio_output)
+                self.alert_audio_output.setVolume(0.9)
             except Exception:
                 pass
+        
+        self.znc_config = {
+            "enabled": False,
+            "host": "",
+            "port": "6697",
+            "username": "",
+            "network": "thaiirc",
+            "password": ""
+        }
+        self.preload_highlight_sound()
         
         # เริ่มสร้างส่วนติดต่อผู้ใช้ (UI)
         self.init_ui()
@@ -945,6 +1172,12 @@ class PIRCHMainWindow(QMainWindow):
         self.ssl_checkbox.stateChanged.connect(self.on_ssl_state_changed)
         self.ssl_checkbox.setStyleSheet("color: #A9A9A9;") 
         radio_layout.addWidget(self.ssl_checkbox)
+
+        self.znc_btn = QPushButton("⚡ ZNC")
+        self.znc_btn.setFixedWidth(65)
+        self.znc_btn.setToolTip("ตั้งค่าและควบคุม ZNC IRC Bouncer")
+        self.znc_btn.clicked.connect(self.open_znc_dialog)
+        radio_layout.addWidget(self.znc_btn)
 
         radio_layout.addStretch()
 
@@ -1344,12 +1577,42 @@ class PIRCHMainWindow(QMainWindow):
         else:
             self.connect_irc()
 
+    def open_znc_dialog(self):
+        """ เปิดหน้าต่างตั้งค่าและควบคุม ZNC IRC Bouncer """
+        dialog = ZNCDialog(self, theme=self.current_theme, znc_config=self.znc_config)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.znc_config = dialog.get_config()
+            if self.znc_config.get("enabled"):
+                if self.znc_config.get("host"):
+                    self.server_input.setText(self.znc_config["host"])
+                if self.znc_config.get("port"):
+                    self.port_input.setText(self.znc_config["port"])
+                if self.znc_config.get("password"):
+                    self.password_input.setText(self.znc_config["password"])
+                
+                self.append_system_msg("⚡ [ZNC Bouncer] เปิดใช้งานการเชื่อมต่อ ZNC แล้ว (เปิดหน้าต่างกดเชื่อมต่อได้ทันที)")
+
     def connect_irc(self):
         server = self.server_input.text().strip()
         port_str = self.port_input.text().strip()
         nick = self.nick_input.text().strip()
         password = self.password_input.text().strip()
         use_ssl = self.ssl_checkbox.isChecked()
+        
+        is_znc_active = False
+        if hasattr(self, "znc_config") and self.znc_config.get("enabled"):
+            is_znc_active = True
+            znc_u = self.znc_config.get("username", "").strip() or nick
+            znc_n = self.znc_config.get("network", "").strip()
+            znc_p = self.znc_config.get("password", "").strip() or password
+            if znc_n:
+                password = f"{znc_u}/{znc_n}:{znc_p}"
+            elif znc_u:
+                password = f"{znc_u}:{znc_p}"
+            else:
+                password = znc_p
+        elif password and ("/" in password or ":" in password):
+            is_znc_active = True
         
         if not server or not port_str or not nick:
             QMessageBox.warning(self, "ข้อมูลไม่ครบ", "กรุณากรอก Server, Port และ Nick ให้ครบถ้วน")
@@ -1384,8 +1647,8 @@ class PIRCHMainWindow(QMainWindow):
         # 1. สร้าง Thread ใหม่
         self.irc_thread = QThread()
         
-        # 2. สร้าง IRCWorker ออบเจกต์ (ส่งรหัสผ่าน และสถานะ SSL)
-        self.irc_worker = IRCWorker(server, port, nick, password=password, use_ssl=use_ssl)
+        # 2. สร้าง IRCWorker ออบเจกต์ (ส่งรหัสผ่าน และสถานะ SSL/ZNC)
+        self.irc_worker = IRCWorker(server, port, nick, password=password, use_ssl=use_ssl, is_znc=is_znc_active)
         
         # 3. ย้าย Worker ไปทำงานใน Thread แยก
         self.irc_worker.moveToThread(self.irc_thread)
@@ -1778,19 +2041,67 @@ class PIRCHMainWindow(QMainWindow):
                 room = self.get_or_create_channel_tab(target)
                 room["chat_display"].append(msg_html)
 
+    def preload_highlight_sound(self):
+        """ ดาวน์โหลดเสียงเตือนแทกชื่อ https://chat.thaiirc.com/static/highlight.mp3 เก็บในระบบล่วงหน้า """
+        def download_thread():
+            try:
+                import os, tempfile, urllib.request
+                cache_file = os.path.join(tempfile.gettempdir(), "thaiirc_highlight.mp3")
+                if not os.path.exists(cache_file) or os.path.getsize(cache_file) == 0:
+                    urllib.request.urlretrieve("https://chat.thaiirc.com/static/highlight.mp3", cache_file)
+            except Exception as e:
+                print(f"Preload sound error: {e}")
+
+        threading.Thread(target=download_thread, daemon=True).start()
+
     def play_alert_sound(self):
-        """ ฟังก์ชันส่งเสียงเตือนระบบ Windows แท้ 100% (ห้ามใช้ระบบวนลูปความถี่สูงของ AI Studio) """
-        import threading
+        """ เล่นเสียงเตือนแทกชื่อจาก https://chat.thaiirc.com/static/highlight.mp3 """
         def sound_thread():
             try:
-                import winsound
-                # เรียกเสียงติ๊งแจ้งเตือนมาตรฐานของระบบ Windows ยิงออกลำโพงหลักโดยตรง
-                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                import os, tempfile, urllib.request
+                cache_file = os.path.join(tempfile.gettempdir(), "thaiirc_highlight.mp3")
+                if not os.path.exists(cache_file) or os.path.getsize(cache_file) == 0:
+                    try:
+                        urllib.request.urlretrieve("https://chat.thaiirc.com/static/highlight.mp3", cache_file)
+                    except Exception as ex:
+                        print(f"Download sound error: {ex}")
+
+                # ถ้ามี QtMultimedia ให้เล่นไฟล์เสียง MP3
+                if self.has_multimedia and self.QUrl_class:
+                    QMetaObject.invokeMethod(
+                        self, "_play_mp3_qt", Qt.ConnectionType.QueuedConnection, Q_ARG(str, cache_file)
+                    )
+                    return
+
+                # Fallback Windows Beep
+                if winsound:
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
             except Exception as e:
                 print(f"Sound Error: {e}")
 
-        # สั่งรันแยกเธรดเบื้องหลัง เพื่อไม่ให้หน้าต่างแอปพลิเคชันกระตุกค้างขณะเสียงดัง
         threading.Thread(target=sound_thread, daemon=True).start()
+
+    @pyqtSlot(str)
+    def _play_mp3_qt(self, file_path):
+        """ Slot เล่นเสียง MP3 บน Main Thread ด้วย QMediaPlayer """
+        try:
+            if self.has_multimedia and self.QUrl_class:
+                if self.alert_player is None:
+                    from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+                    self.alert_player = QMediaPlayer()
+                    self.alert_audio_output = QAudioOutput()
+                    self.alert_player.setAudioOutput(self.alert_audio_output)
+                    self.alert_audio_output.setVolume(0.9)
+                
+                import os
+                if os.path.exists(file_path):
+                    self.alert_player.setSource(self.QUrl_class.fromLocalFile(file_path))
+                else:
+                    self.alert_player.setSource(self.QUrl_class("https://chat.thaiirc.com/static/highlight.mp3"))
+                self.alert_player.setPosition(0)
+                self.alert_player.play()
+        except Exception as e:
+            print(f"Qt sound play error: {e}")
 
 
     def show_user_list_context_menu(self, pos, user_list_widget):
@@ -2490,6 +2801,13 @@ class PIRCHMainWindow(QMainWindow):
                 self.append_system_msg("  /ms หรือ /memoserv คำสั่ง - เรียกใช้บริการ MemoServ")
                 self.append_system_msg("  /hs หรือ /hostserv คำสั่ง - เรียกใช้บริการ HostServ")
                 self.append_system_msg("  /bs หรือ /botserv คำสั่ง - เรียกใช้บริการ BotServ")
+                self.append_system_msg("^B[คำสั่ง ZNC IRC Bouncer]^B")
+                self.append_system_msg("  /znc คำสั่ง - ส่งคำสั่งไปยัง ZNC (เช่น /znc listchans, /znc listnets, /znc help)")
+                self.append_system_msg("  /detach [ชื่อห้อง] - ถอนการแสดงผลห้องแชทชั่วคราวบน ZNC")
+                self.append_system_msg("  /attach [ชื่อห้อง] - แนบห้องแชทกลับเข้ามาใน ZNC")
+                self.append_system_msg("  /saveconfig - บันทึกการตั้งค่าทั้งหมดบน ZNC Bouncer")
+                self.append_system_msg("  /playbuffer [ชื่อห้อง] - ดึงประวัติข้อความย้อนหลังบน ZNC")
+                self.append_system_msg("  /clearbuffer [ชื่อห้อง] - ล้างประวัติข้อความย้อนหลังบน ZNC")
                 self.append_system_msg("^B[คำสั่งผู้ดูแลห้อง (Operator Commands)]^B")
                 self.append_system_msg("  /kick ชื่อเล่น [เหตุผล] - เตะผู้ใช้งานออกจากห้องแชท")
                 self.append_system_msg("  /ban ชื่อเล่น - ตั้งแบนผู้ใช้งาน")
@@ -2640,6 +2958,41 @@ class PIRCHMainWindow(QMainWindow):
             elif cmd == "SANICK":
                 if args and self.irc_worker:
                     self.irc_worker.send_line(f"SANICK {args}")
+            elif cmd == "ZNC":
+                if self.irc_worker:
+                    sub_cmd = args.strip() if args else "help"
+                    self.irc_worker.send_line(f"PRIVMSG *status :{sub_cmd}")
+                    self.append_system_msg(f"-> ZNC: {sub_cmd}")
+                else:
+                    self.append_system_msg("ระบบ: คุณยังไม่ได้เชื่อมต่อเซิร์ฟเวอร์ ไม่สามารถส่งคำสั่ง ZNC ได้")
+            elif cmd == "DETACH":
+                chan_target = args.strip() if args else self.current_channel
+                if self.irc_worker and chan_target:
+                    self.irc_worker.send_line(f"PRIVMSG *status :detach {chan_target}")
+                    self.append_system_msg(f"-> ZNC: detach {chan_target}")
+                else:
+                    self.append_system_msg("ระบบ: กรุณาระบุชื่อห้องแชท หรือเลือกห้องที่ต้องการถอนออกจาก ZNC")
+            elif cmd == "ATTACH":
+                chan_target = args.strip() if args else self.current_channel
+                if self.irc_worker and chan_target:
+                    self.irc_worker.send_line(f"PRIVMSG *status :attach {chan_target}")
+                    self.append_system_msg(f"-> ZNC: attach {chan_target}")
+                else:
+                    self.append_system_msg("ระบบ: กรุณาระบุชื่อห้องแชทที่ต้องการแนบใน ZNC")
+            elif cmd == "SAVECONFIG":
+                if self.irc_worker:
+                    self.irc_worker.send_line("PRIVMSG *status :saveconfig")
+                    self.append_system_msg("-> ZNC: saveconfig")
+            elif cmd == "PLAYBUFFER":
+                chan_target = args.strip() if args else self.current_channel
+                if self.irc_worker and chan_target:
+                    self.irc_worker.send_line(f"PRIVMSG *status :playbuffer {chan_target}")
+                    self.append_system_msg(f"-> ZNC: playbuffer {chan_target}")
+            elif cmd == "CLEARBUFFER":
+                chan_target = args.strip() if args else self.current_channel
+                if self.irc_worker and chan_target:
+                    self.irc_worker.send_line(f"PRIVMSG *status :clearbuffer {chan_target}")
+                    self.append_system_msg(f"-> ZNC: clearbuffer {chan_target}")
             else:
                 # ส่งคำสั่งดิบไปยังเซิร์ฟเวอร์โดยตรงสำหรับคำสั่งอื่นๆ (Raw Fallback)
                 if self.irc_worker:
