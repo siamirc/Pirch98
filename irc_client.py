@@ -1585,9 +1585,21 @@ class PIRCHMainWindow(QMainWindow):
             self.disconnect_irc()
         else:
             self.connect_irc()
+    def get_config_path(self):
+        """คำนวณหาตำแหน่งไฟล์ config.json ให้อยู่ข้าง ๆ ตัวโปรแกรมเสมอ (รองรับทั้ง .py และ .exe)"""
+        import sys
+
+        if getattr(sys, "frozen", False):
+            # ถ้าเป็นไฟล์ .exe ให้หาโฟลเดอร์ที่ตัว .exe นั้นตั้งอยู่
+            application_path = os.path.dirname(sys.executable)
+        else:
+            # ถ้าเป็นไฟล์ .py ปกติ ให้ใช้โฟลเดอร์ของโค้ดสคริปต์
+            application_path = os.path.dirname(os.path.abspath(__file__))
+
+        return os.path.join(application_path, "config.json")
 
     def save_config(self):
-        """ บันทึกการตั้งค่าการเชื่อมต่อ, ZNC, และธีม ลงในไฟล์ config.json """
+        """บันทึกการตั้งค่าการเชื่อมต่อ, ZNC, และธีม ลงในไฟล์ config.json"""
         config_data = {
             "server": self.server_input.text().strip(),
             "port": self.port_input.text().strip(),
@@ -1598,25 +1610,32 @@ class PIRCHMainWindow(QMainWindow):
             "theme": getattr(self, "current_theme", "light"),
             "font_size_idx": getattr(self, "font_size_idx", 1),
             "mention_notify_enabled": getattr(self, "mention_notify_enabled", True),
-            "znc_config": getattr(self, "znc_config", {})
+            "znc_config": getattr(self, "znc_config", {}),
         }
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+            # แก้ไข: เรียกใช้ฟังก์ชันหาพาธที่ถูกต้องข้างนอก .exe
+            config_path = self.get_config_path()
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, ensure_ascii=False, indent=2)
-            print("[CONFIG] บันทึกการตั้งค่าลงใน config.json เรียบร้อยแล้ว")
+            print(
+                f"[CONFIG] บันทึกการตั้งค่าลงใน {config_path} เรียบร้อยแล้ว"
+            )
         except Exception as e:
             print(f"[CONFIG] Error saving config: {e}")
 
     def load_config(self):
-        """ โหลดการตั้งค่าจากไฟล์ config.json ถ้ามีอยู่ """
+        """โหลดการตั้งค่าจากไฟล์ config.json ถ้ามีอยู่"""
         try:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+            # แก้ไข: เรียกใช้ฟังก์ชันหาพาธที่ถูกต้องข้างนอก .exe
+            config_path = self.get_config_path()
             if not os.path.exists(config_path):
+                print(
+                    "[CONFIG] ไม่พบไฟล์ config.json (จะใช้ค่าเริ่มต้นของหน้าจอ)"
+                )
                 return
             with open(config_path, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-            
+
             if "server" in config_data and config_data["server"]:
                 self.server_input.setText(config_data["server"])
             if "port" in config_data and config_data["port"]:
@@ -1629,16 +1648,20 @@ class PIRCHMainWindow(QMainWindow):
                 self.password_input.setText(config_data["password"])
             if "use_ssl" in config_data:
                 self.ssl_checkbox.setChecked(bool(config_data["use_ssl"]))
-            if "znc_config" in config_data and isinstance(config_data["znc_config"], dict):
+            if "znc_config" in config_data and isinstance(
+                config_data["znc_config"], dict
+            ):
                 self.znc_config.update(config_data["znc_config"])
             if "theme" in config_data:
                 self.current_theme = config_data["theme"]
             if "font_size_idx" in config_data:
                 self.font_size_idx = config_data["font_size_idx"]
             if "mention_notify_enabled" in config_data:
-                self.mention_notify_enabled = bool(config_data["mention_notify_enabled"])
-            
-            print("[CONFIG] โหลดการตั้งค่าจาก config.json เรียบร้อยแล้ว")
+                self.mention_notify_enabled = bool(
+                    config_data["mention_notify_enabled"]
+                )
+
+            print(f"[CONFIG] โหลดการตั้งค่าจาก {config_path} เรียบร้อยแล้ว")
         except Exception as e:
             print(f"[CONFIG] Error loading config: {e}")
 
