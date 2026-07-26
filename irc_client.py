@@ -1,4 +1,6 @@
 import sys
+import os
+import json
 import socket
 import re
 import threading
@@ -991,8 +993,14 @@ class PIRCHMainWindow(QMainWindow):
         
         # เริ่มสร้างส่วนติดต่อผู้ใช้ (UI)
         self.init_ui()
-        self.apply_theme("light")
+        self.load_config()
+        self.apply_theme(self.current_theme)
         self.update_font_size()
+        if hasattr(self, "mention_btn"):
+            if self.mention_notify_enabled:
+                self.mention_btn.setText("🔔 แทกชื่อ: เปิด")
+            else:
+                self.mention_btn.setText("🔕 แทกชื่อ: ปิด")
 
     def init_ui(self):
         # Widget หลัก
@@ -1498,6 +1506,7 @@ class PIRCHMainWindow(QMainWindow):
             self.apply_theme("dark")
         else:
             self.apply_theme("light")
+        self.save_config()
 
     def on_ssl_state_changed(self, state):
         """ สลับพอร์ตอัตโนมัติเมื่อเลือก SSL """
@@ -1577,6 +1586,62 @@ class PIRCHMainWindow(QMainWindow):
         else:
             self.connect_irc()
 
+    def save_config(self):
+        """ บันทึกการตั้งค่าการเชื่อมต่อ, ZNC, และธีม ลงในไฟล์ config.json """
+        config_data = {
+            "server": self.server_input.text().strip(),
+            "port": self.port_input.text().strip(),
+            "nick": self.nick_input.text().strip(),
+            "channel": self.channel_input.text().strip(),
+            "password": self.password_input.text().strip(),
+            "use_ssl": self.ssl_checkbox.isChecked(),
+            "theme": getattr(self, "current_theme", "light"),
+            "font_size_idx": getattr(self, "font_size_idx", 1),
+            "mention_notify_enabled": getattr(self, "mention_notify_enabled", True),
+            "znc_config": getattr(self, "znc_config", {})
+        }
+        try:
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+            print("[CONFIG] บันทึกการตั้งค่าลงใน config.json เรียบร้อยแล้ว")
+        except Exception as e:
+            print(f"[CONFIG] Error saving config: {e}")
+
+    def load_config(self):
+        """ โหลดการตั้งค่าจากไฟล์ config.json ถ้ามีอยู่ """
+        try:
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+            if not os.path.exists(config_path):
+                return
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = json.load(f)
+            
+            if "server" in config_data and config_data["server"]:
+                self.server_input.setText(config_data["server"])
+            if "port" in config_data and config_data["port"]:
+                self.port_input.setText(config_data["port"])
+            if "nick" in config_data and config_data["nick"]:
+                self.nick_input.setText(config_data["nick"])
+            if "channel" in config_data and config_data["channel"]:
+                self.channel_input.setText(config_data["channel"])
+            if "password" in config_data:
+                self.password_input.setText(config_data["password"])
+            if "use_ssl" in config_data:
+                self.ssl_checkbox.setChecked(bool(config_data["use_ssl"]))
+            if "znc_config" in config_data and isinstance(config_data["znc_config"], dict):
+                self.znc_config.update(config_data["znc_config"])
+            if "theme" in config_data:
+                self.current_theme = config_data["theme"]
+            if "font_size_idx" in config_data:
+                self.font_size_idx = config_data["font_size_idx"]
+            if "mention_notify_enabled" in config_data:
+                self.mention_notify_enabled = bool(config_data["mention_notify_enabled"])
+            
+            print("[CONFIG] โหลดการตั้งค่าจาก config.json เรียบร้อยแล้ว")
+        except Exception as e:
+            print(f"[CONFIG] Error loading config: {e}")
+
     def open_znc_dialog(self):
         """ เปิดหน้าต่างตั้งค่าและควบคุม ZNC IRC Bouncer """
         dialog = ZNCDialog(self, theme=self.current_theme, znc_config=self.znc_config)
@@ -1591,8 +1656,12 @@ class PIRCHMainWindow(QMainWindow):
                     self.password_input.setText(self.znc_config["password"])
                 
                 self.append_system_msg("⚡ [ZNC Bouncer] เปิดใช้งานการเชื่อมต่อ ZNC แล้ว (เปิดหน้าต่างกดเชื่อมต่อได้ทันที)")
+            self.save_config()
 
     def connect_irc(self):
+        # บันทึกค่าการตั้งค่าต่างๆ ลงในไฟล์ config.json
+        self.save_config()
+
         server = self.server_input.text().strip()
         port_str = self.port_input.text().strip()
         nick = self.nick_input.text().strip()
@@ -2591,6 +2660,7 @@ class PIRCHMainWindow(QMainWindow):
         """ สลับระดับขนาดตัวอักษร 3 ระดับวนซ้ำ """
         self.font_size_idx = (self.font_size_idx + 1) % 3
         self.update_font_size()
+        self.save_config()
 
     def toggle_mention_notify(self):
         """ เปิด/ปิดระบบแจ้งเตือนการแทกชื่อ """
@@ -2601,6 +2671,7 @@ class PIRCHMainWindow(QMainWindow):
         else:
             self.mention_btn.setText("🔕 แทกชื่อ: ปิด")
             self.append_system_msg("ปิดใช้งานระบบแจ้งเตือนการแทกชื่อแล้ว")
+        self.save_config()
 
     def on_error(self, err_msg):
         """ จัดการกรณีเกิดข้อผิดพลาดขึ้นในเธรด socket """
